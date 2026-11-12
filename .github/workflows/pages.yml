@@ -1,6 +1,5 @@
 # Publishes site/ to GitHub Pages with the pages agoratool makes of it and of CHANGELOG.md (agoratool site build).
 # Pages use the "GitHub Actions" source (set once: gh api -X POST repos/sachahjkl/agora/pages -f build_type=workflow).
-# The site lists the versions of CHANGELOG.md: this workflow stays disabled until the first version (gh workflow enable pages.yml).
 name: Pages
 
 on:
