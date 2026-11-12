@@ -1,0 +1,51 @@
+name: Release
+
+# A version tag vX.Y.Z (agoratool ship makes it) builds agora and publishes it: the Linux archive with its SHA-256, on a
+# GitHub release whose notes are the changelog's section of that version. The tag must be APP_VERSION's (agoratool
+# package checks).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    container: debian:bookworm
+    timeout-minutes: 40
+    steps:
+      # Debian 12 (bookworm): its packages from deb.debian.org, and its glibc 2.36: the oldest a Linux build then needs.
+      # First: checkout needs git for the submodules.
+      - name: Debian's packages
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl jq xz-utils zstd unzip clang lld libfontconfig-dev gh >/dev/null
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-odin-linux
+
+      - name: Build and test
+        run: |
+          odin build tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool -vet
+          build/agoratool check
+
+      - name: Package
+        run: build/agoratool package ${{ github.ref_name }}
+
+      # (gh asks git for the repository: in the container the checkout is another user's, which git refuses unless it is
+      # said safe; GH_REPO names the repository besides)
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          build/agoratool notes ${{ github.ref_name }} > build/notes.md
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" build/dist/* --clobber
+          else
+            gh release create "${{ github.ref_name }}" build/dist/* --title "agora ${GITHUB_REF_NAME#v}" --notes-file build/notes.md
+          fi

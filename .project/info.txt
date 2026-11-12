@@ -1,0 +1,2 @@
+name=agora
+description=A living world of autonomous people: they work, trade, form groups, draw borders and go to war, and sensors measure what emerges, live.

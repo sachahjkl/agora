@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <title>agora's loop: the state of a person modulates their motivations, motivations choose actions, actions meet other people, and what emerges feeds back</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151935"/><stop offset="1" stop-color="#0b0d1c"/></linearGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232850"/><stop offset="1" stop-color="#181c38"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a9aac8"/></marker>
+    <marker id="gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f5b94a"/></marker>
+  </defs>
+  <rect width="1200" height="560" fill="url(#bg)"/>
+
+  <g font-size="22" fill="#ecebf5" text-anchor="middle">
+    <rect x="60" y="70" width="240" height="150" rx="14" fill="url(#box)" stroke="#000"/>
+    <text x="180" y="112" font-weight="700" fill="#4fd1c5">State</text>
+    <text x="180" y="148" font-size="16" fill="#a9aac8">health · disease · hunger</text>
+    <text x="180" y="172" font-size="16" fill="#a9aac8">fatigue · fear · trauma</text>
+    <text x="180" y="196" font-size="16" fill="#a9aac8">wealth · education · rights</text>
+
+    <rect x="360" y="70" width="240" height="150" rx="14" fill="url(#box)" stroke="#000"/>
+    <text x="480" y="112" font-weight="700" fill="#f5b94a">Motivations</text>
+    <text x="480" y="148" font-size="16" fill="#a9aac8">subsistence · security</text>
+    <text x="480" y="172" font-size="16" fill="#a9aac8">belonging · status</text>
+    <text x="480" y="196" font-size="16" fill="#a9aac8">deficit · expectation · weight</text>
+
+    <rect x="660" y="70" width="240" height="150" rx="14" fill="url(#box)" stroke="#000"/>
+    <text x="780" y="112" font-weight="700" fill="#f0715f">Decision</text>
+    <text x="780" y="148" font-size="16" fill="#a9aac8">instinct, fast</text>
+    <text x="780" y="172" font-size="16" fill="#a9aac8">deliberation, slow</text>
+    <text x="780" y="196" font-size="16" fill="#a9aac8">work · trade · join · flee · fight</text>
+
+    <rect x="960" y="70" width="190" height="150" rx="14" fill="url(#box)" stroke="#000"/>
+    <text x="1055" y="112" font-weight="700">Interactions</text>
+    <text x="1055" y="148" font-size="16" fill="#a9aac8">markets · groups</text>
+    <text x="1055" y="172" font-size="16" fill="#a9aac8">borders · contagion</text>
+    <text x="1055" y="196" font-size="16" fill="#a9aac8">war</text>
+
+    <rect x="360" y="330" width="540" height="150" rx="14" fill="#080914" stroke="#000"/>
+    <text x="630" y="372" font-weight="700">What emerges</text>
+    <text x="630" y="408" font-size="16" fill="#a9aac8">inequality · business cycles · cities · trade routes</text>
+    <text x="630" y="432" font-size="16" fill="#a9aac8">tribalism · prejudice · states · wars · migrations</text>
+    <text x="630" y="456" font-size="16" fill="#73759a">measured by sensors, never written as a rule</text>
+  </g>
+
+  <g fill="none" stroke="#a9aac8" stroke-width="3">
+    <path d="M300 145H352" marker-end="url(#arrow)"/>
+    <path d="M600 145H652" marker-end="url(#arrow)"/>
+    <path d="M900 145H952" marker-end="url(#arrow)"/>
+    <path d="M1055 220V405H908" marker-end="url(#arrow)"/>
+  </g>
+  <path d="M360 405H180V228" fill="none" stroke="#f5b94a" stroke-width="3" stroke-dasharray="10 8" marker-end="url(#gold)"/>
+  <text x="270" y="395" font-size="16" fill="#f5b94a" text-anchor="middle">feedback</text>
+</svg>

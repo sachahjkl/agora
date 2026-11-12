@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agora: a living world of autonomous people, watched as it runs</title>
+<meta name="description" content="agora simulates a world of people who work, trade, form groups, draw borders and go to war, each from a few motivations. Place sensors on it and watch what emerges, live.">
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#"><img src="img/logo.png" alt="" width="28" height="28"><span>agora</span></a>
+  <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+  <nav id="nav">
+    <a href="#features">Features</a>
+    <a href="#design">Design</a>
+    <a href="#download">Download</a>
+    <a href="changelog.html">Changelog</a>
+    <a href="https://github.com/sachahjkl/agora">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <img class="mark" src="img/logo.png" alt="agora logo" width="112" height="112">
+    <h1>agora</h1>
+    <p class="lead">A living world of autonomous people, watched as it runs.</p>
+    <div class="actions">
+      <a class="btn accent get" href="https://github.com/sachahjkl/agora/blob/master/docs/design.md"><span class="get-text"><span class="get-main">Read the design</span> <span class="get-sub">no version yet · work in progress</span></span></a>
+      <a class="btn" href="https://github.com/sachahjkl/agora">Source on GitHub</a>
+    </div>
+    <p class="small">MIT</p>
+  </section>
+
+  <figure class="shot wide">
+    <a class="frame" href="img/loop.svg"><img src="img/loop.svg" alt="agora's loop: the state of a person modulates their motivations, motivations choose actions, actions meet other people, and what emerges feeds back"></a>
+    <figcaption>The loop: a person's state shapes their motivations, motivations choose actions, and what emerges comes back.</figcaption>
+  </figure>
+
+  <section id="features" class="grid">
+    <article class="card">
+      <h3>Motivations, not scripts</h3>
+      <p>Each person weighs a few needs: subsistence, security, belonging, status. They learn whom to trust, and decide by
+        deliberation or by instinct. Nothing else is written in.</p>
+    </article>
+    <article class="card">
+      <h3>What a body and a life do</h3>
+      <p>Health, disease, hunger, fatigue, fear, trauma, wealth, education and rights change how a person decides. Under
+        stress, instinct takes over.</p>
+    </article>
+    <article class="card">
+      <h3>Groups and borders</h3>
+      <p>Abstract markers, learned trust, groups with leaders, states, borders, war and conquest. Tribalism and prejudice
+        emerge, or do not, from the same rules.</p>
+    </article>
+    <article class="card">
+      <h3>An economy underneath</h3>
+      <p>Production, markets, trade between regions, money and credit, kept to the last unit: what is spent is what was
+        earned. Trust lowers the cost of a trade; a border raises it.</p>
+    </article>
+    <article class="card">
+      <h3>Sensors, live</h3>
+      <p>Place a sensor on a region, a group or one person: output, inequality, trust between groups, fear, epidemics,
+        fronts. A sensor never changes the world it measures.</p>
+    </article>
+    <article class="card">
+      <h3>Real time, and replay</h3>
+      <p>The target is one million people at about 30 steps per second. The same seed gives the same world, byte for byte:
+        go back to any step and watch it again.</p>
+    </article>
+  </section>
+
+  <!-- whats-new -->
+
+  <section id="design" class="gallery">
+    <figure class="shot"><a class="frame" href="img/step.svg"><img src="img/step.svg" alt="One step of the engine: the state at t is read, the phases run in a fixed order on blocks of agents, the state at t+1 is written" loading="lazy"></a><figcaption>One step of the engine</figcaption></figure>
+    <figure class="shot"><a class="frame" href="img/sensors.svg"><img src="img/sensors.svg" alt="Sensors: the engine writes each sensor's measures to a ring buffer, and the viewer's panels read them" loading="lazy"></a><figcaption>Sensors and panels</figcaption></figure>
+  </section>
+
+  <section id="download" class="download">
+    <h2>Download</h2>
+    <div class="cols">
+      <div class="well">
+        <h3>Not yet</h3>
+        <p>agora is in design. The first version will be the engine's skeleton: people who move and trade, the sensors
+          and a viewer. Follow the repository to see it come.</p>
+        <code><a href="https://github.com/sachahjkl/agora">github.com/sachahjkl/agora</a></code>
+      </div>
+      <div class="well">
+        <h3>From source</h3>
+        <p>The flake has everything the build needs (Nix 2.27 or later: it brings its submodule).</p>
+        <code>git clone --recurse-submodules https://github.com/sachahjkl/agora</code>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p class="by">By <span class="maker"><img src="img/froment-software-64.png" alt="" width="16" height="16"><a href="https://froment.software">Froment Software</a></span></p>
+  <p class="small"><span>MIT licence</span> · <span>Built in <a href="https://odin-lang.org">Odin</a> on <a href="https://gt.sacha.house/">gui_toolkit</a></span> · <a href="classic/">Classic version</a></p>
+</footer>
+<script>
+  // the bar's menu on narrow screens: the button opens it, a link or a click elsewhere closes it
+  const bar = document.querySelector('.bar'), burger = bar.querySelector('.burger');
+  const shut = () => { bar.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); };
+  burger.addEventListener('click', e => { e.stopPropagation(); burger.setAttribute('aria-expanded', String(bar.classList.toggle('open'))); });
+  bar.querySelectorAll('nav a').forEach(a => a.addEventListener('click', shut));
+  document.addEventListener('click', e => { if (!bar.contains(e.target)) shut(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') shut(); });
+</script>
+<script src="gallery.js" defer></script>
+</body>
+</html>

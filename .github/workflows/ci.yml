@@ -1,0 +1,56 @@
+name: CI
+
+# Every push to master and every pull request: agoratool check (odin check -vet of the program and the tool, the unit
+# tests, the changelog's fragments, a release build), in the flake's development shell. The program is kept as an artifact.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    # the flake's development shell (nix develop), as on a developer's machine: Odin and cargo from the NixOS cache
+    name: Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      # (the toolkit's text library: cargo's target directory and the crates it was built from, keyed by its sources)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ext/gui_toolkit/build/text
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: text-cargo-linux-nix-${{ hashFiles('ext/gui_toolkit/native/text/**', 'flake.lock') }}
+
+      - name: agoratool check
+        run: |
+          nix develop --command sh -c '
+            set -e
+            mkdir -p build
+            odin build tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool -vet
+            build/agoratool check
+          '
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agora-linux-x64-${{ github.sha }}
+          path: build/agora
+          if-no-files-found: warn

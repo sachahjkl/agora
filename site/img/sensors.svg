@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <title>Sensors: the engine writes each sensor's measures to a ring buffer, and the viewer's panels read them without ever touching the world</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151935"/><stop offset="1" stop-color="#0b0d1c"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#a9aac8"/></marker>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <text x="400" y="52" font-size="24" font-weight="700" fill="#ecebf5" text-anchor="middle">Sensors</text>
+
+  <rect x="40" y="110" width="170" height="300" rx="14" fill="#080914" stroke="#000"/>
+  <text x="125" y="250" font-size="20" font-weight="700" fill="#ecebf5" text-anchor="middle">engine</text>
+  <text x="125" y="278" font-size="14" fill="#73759a" text-anchor="middle">never waits</text>
+
+  <g font-size="15" fill="#ecebf5">
+    <g transform="translate(300 110)">
+      <rect width="200" height="56" rx="10" fill="#1f2445"/><text x="16" y="24">output · Gini</text><text x="16" y="44" fill="#73759a" font-size="13">scalar, each step</text>
+    </g>
+    <g transform="translate(300 192)">
+      <rect width="200" height="56" rx="10" fill="#1f2445"/><text x="16" y="24">fear per cell</text><text x="16" y="44" fill="#73759a" font-size="13">map, every 10 steps</text>
+    </g>
+    <g transform="translate(300 274)">
+      <rect width="200" height="56" rx="10" fill="#1f2445"/><text x="16" y="24">trust A × B × C</text><text x="16" y="44" fill="#73759a" font-size="13">matrix</text>
+    </g>
+    <g transform="translate(300 356)">
+      <rect width="200" height="56" rx="10" fill="#1f2445"/><text x="16" y="24">wars · epidemics</text><text x="16" y="44" fill="#73759a" font-size="13">events</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#a9aac8" stroke-width="2.5">
+    <path d="M210 138H292" marker-end="url(#arrow)"/>
+    <path d="M210 220H292" marker-end="url(#arrow)"/>
+    <path d="M210 302H292" marker-end="url(#arrow)"/>
+    <path d="M210 384H292" marker-end="url(#arrow)"/>
+    <path d="M500 138H582" marker-end="url(#arrow)"/>
+    <path d="M500 220H582" marker-end="url(#arrow)"/>
+    <path d="M500 302H582" marker-end="url(#arrow)"/>
+    <path d="M500 384H582" marker-end="url(#arrow)"/>
+  </g>
+
+  <rect x="590" y="110" width="170" height="300" rx="14" fill="#1a1e3a" stroke="#000"/>
+  <text x="675" y="146" font-size="20" font-weight="700" fill="#f5b94a" text-anchor="middle">panels</text>
+  <polyline points="610,230 630,214 650,222 670,190 690,206 710,176 740,184" fill="none" stroke="#4fd1c5" stroke-width="3"/>
+  <g>
+    <rect x="610" y="260" width="40" height="40" fill="#f0715f" opacity="0.8"/><rect x="652" y="260" width="40" height="40" fill="#f5b94a" opacity="0.5"/><rect x="694" y="260" width="40" height="40" fill="#4fd1c5" opacity="0.3"/>
+    <rect x="610" y="302" width="40" height="40" fill="#4fd1c5" opacity="0.6"/><rect x="652" y="302" width="40" height="40" fill="#f0715f" opacity="0.3"/><rect x="694" y="302" width="40" height="40" fill="#f5b94a" opacity="0.9"/>
+  </g>
+  <text x="675" y="380" font-size="13" fill="#73759a" text-anchor="middle">ring buffers, read only</text>
+</svg>

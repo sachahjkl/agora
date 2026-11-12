@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" font-family="Inter, 'Segoe UI', system-ui, sans-serif">
+  <title>One step of the engine: the state at t is read, the phases run in a fixed order on blocks of agents, the state at t+1 is written</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151935"/><stop offset="1" stop-color="#0b0d1c"/></linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <text x="400" y="52" font-size="24" font-weight="700" fill="#ecebf5" text-anchor="middle">One step</text>
+
+  <rect x="40" y="90" width="120" height="360" rx="12" fill="#080914" stroke="#000"/>
+  <text x="100" y="270" font-size="20" font-weight="700" fill="#4fd1c5" text-anchor="middle">state t</text>
+  <rect x="640" y="90" width="120" height="360" rx="12" fill="#080914" stroke="#000"/>
+  <text x="700" y="270" font-size="20" font-weight="700" fill="#f5b94a" text-anchor="middle">state t+1</text>
+
+  <g font-size="17" fill="#ecebf5" text-anchor="middle">
+    <rect x="190" y="90" width="420" height="44" rx="10" fill="#1f2445"/><text x="400" y="118">sort by cell</text>
+    <rect x="190" y="144" width="420" height="44" rx="10" fill="#1f2445"/><text x="400" y="172">modulators, deficits (SIMD)</text>
+    <rect x="190" y="198" width="420" height="44" rx="10" fill="#1f2445"/><text x="400" y="226">decide: write intentions</text>
+    <rect x="190" y="252" width="420" height="44" rx="10" fill="#1f2445"/><text x="400" y="280">resolve intentions, cell by cell</text>
+    <rect x="190" y="306" width="420" height="44" rx="10" fill="#1f2445"/><text x="400" y="334">slow systems, a share of agents</text>
+    <rect x="190" y="360" width="420" height="44" rx="10" fill="#2a2010" stroke="#f5b94a"/><text x="400" y="388" fill="#f5b94a">sensors: one fused pass</text>
+  </g>
+  <text x="400" y="440" font-size="15" fill="#73759a" text-anchor="middle">blocks of 4,096 agents on every core · same seed, same bytes</text>
+</svg>
