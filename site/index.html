@@ -14,7 +14,7 @@
   <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
   <nav id="nav">
     <a href="#features">Features</a>
-    <a href="#design">Design</a>
+    <a href="https://github.com/sachahjkl/agora/blob/master/docs/design.md">Design</a>
     <a href="#download">Download</a>
     <a href="changelog.html">Changelog</a>
     <a href="https://github.com/sachahjkl/agora">GitHub</a>
@@ -27,7 +27,7 @@
     <h1>agora</h1>
     <p class="lead">A living world of autonomous people, watched as it runs.</p>
     <div class="actions">
-      <a class="btn accent get" href="https://github.com/sachahjkl/agora/blob/master/docs/design.md"><span class="get-text"><span class="get-main">Read the design</span> <span class="get-sub">no version yet · work in progress</span></span></a>
+      <a class="btn accent get" href="https://github.com/sachahjkl/agora/blob/master/docs/design.md"><span class="get-text"><span class="get-main">Read the design</span> <span class="get-sub">v{{version}} · in design</span></span></a>
       <a class="btn" href="https://github.com/sachahjkl/agora">Source on GitHub</a>
     </div>
     <p class="small">MIT</p>
@@ -73,7 +73,7 @@
 
   <!-- whats-new -->
 
-  <section id="design" class="gallery">
+  <section class="gallery">
     <figure class="shot"><a class="frame" href="img/step.svg"><img src="img/step.svg" alt="One step of the engine: the state at t is read, the phases run in a fixed order on blocks of agents, the state at t+1 is written" loading="lazy"></a><figcaption>One step of the engine</figcaption></figure>
     <figure class="shot"><a class="frame" href="img/sensors.svg"><img src="img/sensors.svg" alt="Sensors: the engine writes each sensor's measures to a ring buffer, and the viewer's panels read them" loading="lazy"></a><figcaption>Sensors and panels</figcaption></figure>
   </section>
@@ -83,8 +83,8 @@
     <div class="cols">
       <div class="well">
         <h3>Not yet</h3>
-        <p>agora is in design. The first version will be the engine's skeleton: people who move and trade, the sensors
-          and a viewer. Follow the repository to see it come.</p>
+        <p>agora is in design: version {{version}} holds the design and the skeleton, and runs no world yet. The next
+          step is the engine: people who move and trade, the sensors and a viewer. Follow the repository to see it come.</p>
         <code><a href="https://github.com/sachahjkl/agora">github.com/sachahjkl/agora</a></code>
       </div>
       <div class="well">
