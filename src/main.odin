@@ -5,7 +5,7 @@ package agora
 import "core:fmt"
 
 APP_NAME    :: "agora"
-APP_VERSION :: "0.0.0"
+APP_VERSION :: "0.1.0"
 
 main :: proc() {
 	fmt.printfln("%s %s", APP_NAME, APP_VERSION)
