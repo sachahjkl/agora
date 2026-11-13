@@ -15,6 +15,6 @@ type: Added
 `type` is `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security`. The text is one entry of the list; it may
 span lines, with no blank line and no heading.
 
-`agoratool changelog new <type> <subject> <text>` writes one; `changelog check` (run by `check`) says whether they
+`agoratool changelog new <type> <text> [-subject:<subject>]` writes one; `changelog check` (run by `check`) says whether they
 are all well formed; `changelog preview` prints what the next version brings. The format is gui_toolkit's
 (`gt:changelog`, its docs/changelog.md).

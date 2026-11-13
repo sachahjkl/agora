@@ -12,7 +12,8 @@ Every step is a command of `tools/agoratool` (`help` lists them):
     odin run tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool -keep-executable -- <command>
 
 - `build [release]` builds `build/agora` (`build.sh` / `build.bat` are shortcuts).
-- `check`: `odin check -vet`, the unit tests, the changelog's fragments, a release build.
+- `check`: `odin check -vet` (Linux and Windows), the scopes, the unit tests, the changelog's fragments, a release build.
+- `ship <patch|minor|major|x.y.z>` publishes a version; `package` and `notes` are the release workflow's.
 - `logo` draws the logo and the sharing card; `site build`, `site check` make and check the site.
 - `nix develop` first (`flake.nix`). `nix build` builds the package.
 

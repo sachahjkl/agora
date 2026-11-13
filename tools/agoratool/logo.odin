@@ -8,12 +8,10 @@ package agoratool
 // site/img/logo.png.
 
 import "core:fmt"
-import "core:os"
 import paint "gt:paint"
+import toolbox "gt:toolbox"
 
-LOGO_DIR    :: "assets"
 LOGO_MASTER :: 1024
-LOGO_SIZES  :: [?]int{16, 24, 32, 48, 64, 128, 256, 512}
 // The drawing's own units: a square of LOGO_UNITS, scaled to the canvas.
 LOGO_UNITS  :: 512.0
 // Small sizes are drawn from a master this many times larger, in one step of the cubic filter at most this factor.
@@ -138,7 +136,7 @@ logo_paint :: proc(canvas: ^paint.Canvas, x, y, size: f32, detail: int) {
 }
 
 // The picture at `size`: drawn large, then shrunk in steps the cubic filter keeps clean.
-logo_render :: proc(size: int) -> paint.Canvas {
+logo_render :: proc(size: int, user: rawptr) -> paint.Canvas {
 	n := size
 	for n < LOGO_MASTER { n *= LOGO_SHRINK_STEP }
 	c := logo_draw(n, detail_for(size))
@@ -151,32 +149,28 @@ logo_render :: proc(size: int) -> paint.Canvas {
 	return c
 }
 
-PROJECT_IMAGE      :: ".project/image.png"
-PROJECT_IMAGE_SIZE :: 512
-SITE_LOGO          :: "site/img/logo.png"
-SITE_LOGO_SIZE     :: 256
+SITE_LOGO      :: "site/img/logo.png"
+SITE_LOGO_SIZE :: 256
 
-@(private = "file")
-write_logo :: proc(size: int, path: string) -> bool {
-	c := logo_render(size)
-	defer paint.canvas_destroy(&c)
-	if !paint.write_png(c, path) { fmt.eprintfln("agoratool: %s cannot be written", path); return false }
-	fmt.printfln("wrote %s", path)
-	return true
+// What the logo command writes besides the card; the project's picture is what the repository and opencode's sessions of
+// it show.
+logo :: proc() -> toolbox.Logo {
+	return {
+		render = logo_render, dir = "assets", master = LOGO_MASTER, sizes = LOGO_SIZES[:], project_image = true,
+		files = LOGO_FILES[:],
+	}
 }
 
+@(rodata)
+LOGO_SIZES := [?]int{16, 24, 32, 48, 64, 128, 256, 512}
+
+@(rodata)
+LOGO_FILES := [?]toolbox.Logo_File{{SITE_LOGO, SITE_LOGO_SIZE}}
+
+// Not toolbox.logo_command: the sharing card is drawn with the mark, by the same command.
 run_logo :: proc(args: []string) -> int {
-	_ = os.make_directory_all(LOGO_DIR)
-	if !write_logo(LOGO_MASTER, fmt.tprintf("%s/logo.png", LOGO_DIR)) { return 1 }
-	for size in LOGO_SIZES {
-		if !write_logo(size, fmt.tprintf("%s/logo_%d.png", LOGO_DIR, size)) { return 1 }
-	}
-	// the project's picture: what the repository and opencode's sessions of it show
-	_ = os.make_directory_all(".project")
-	if !write_logo(PROJECT_IMAGE_SIZE, PROJECT_IMAGE) { return 1 }
-	_ = os.make_directory_all("site/img")
-	if !write_logo(SITE_LOGO_SIZE, SITE_LOGO) { return 1 }
-	return write_card() ? 0 : 1
+	if why := toolbox.write_logo(logo()); why != "" { return toolbox.done(why) }
+	return toolbox.done(write_card())
 }
 
 // The sharing card (SITE_META.card): the mark on the site's night, with the groups' colours spread faintly behind it.
@@ -188,7 +182,7 @@ CARD_BACKGROUND  :: 0x0B0D1C
 CARD_MARK        :: 440
 
 @(private = "file")
-write_card :: proc() -> bool {
+write_card :: proc() -> (why: string) {
 	c := paint.canvas_make(CARD_W, CARD_H)
 	defer paint.canvas_destroy(&c)
 	whole: paint.Path
@@ -199,7 +193,7 @@ write_card :: proc() -> bool {
 	glows := [3]struct{ x, y: f32, colour: u32 }{{240, 140, GOLD}, {170, 560, TEAL}, {1040, 470, CORAL}}
 	for g in glows { paint.fill(&c, whole, paint.radial({g.x, g.y}, 520, paint.hex(g.colour, 60), paint.hex(g.colour, 0))) }
 	logo_paint(&c, (CARD_W - CARD_MARK) / 2, (CARD_H - CARD_MARK) / 2, CARD_MARK, 1)
-	if !paint.write_png(c, SITE_CARD) { fmt.eprintfln("agoratool: %s cannot be written", SITE_CARD); return false }
+	if !paint.write_png(c, SITE_CARD) { return fmt.tprintf("%s cannot be written", SITE_CARD) }
 	fmt.printfln("wrote %s", SITE_CARD)
-	return true
+	return ""
 }
