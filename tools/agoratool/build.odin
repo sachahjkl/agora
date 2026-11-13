@@ -10,7 +10,7 @@ import toolbox "gt:toolbox"
 run_build :: proc(args: []string) -> int {
 	p := project()
 	release := len(args) > 0 && args[0] == "release"
-	if !toolbox.build_native_text(p) { return toolbox.EXIT_FAILED }
+	if !toolbox.build_native(p) { return toolbox.EXIT_FAILED }
 	_ = os.make_directory("build")
 	extra := []string{fmt.tprintf("-out:%s", p.program), release ? "-o:speed" : "-debug"}
 	if !toolbox.run(toolbox.odin_command(p, "build", extra = extra), {echo = true}) { return toolbox.EXIT_FAILED }
@@ -20,7 +20,7 @@ run_build :: proc(args: []string) -> int {
 
 run_test :: proc(args: []string) -> int {
 	p := project()
-	if !toolbox.build_native_text(p) { return toolbox.EXIT_FAILED }
+	if !toolbox.build_native(p) { return toolbox.EXIT_FAILED }
 	_ = os.make_directory("build")
 	return toolbox.run(toolbox.odin_command(p, "test", extra = {"-out:build/test_agora"}), {echo = true}) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
 }
