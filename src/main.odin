@@ -27,6 +27,8 @@ Options :: struct {
 	rate:       int,
 	frames:     int,
 	headless:   bool,
+	select:     string,
+	zoom:       f32,
 	quiet:      bool,
 }
 
@@ -84,7 +86,7 @@ main :: proc() {
 	if command == "run" {
 		os.exit(run_headless(&o))
 	}
-	os.exit(viewer_run(u64(o.agents), u64(o.rate), o.seed, o.frames, o.headless))
+	os.exit(viewer_run(u64(o.agents), u64(o.rate), o.seed, o.frames, o.headless, o.select, o.zoom))
 }
 
 has_prefix :: proc(s, p: string) -> bool {
@@ -139,6 +141,10 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 			o.rate, ok = strconv.parse_int(value)
 		case "frames":
 			o.frames, ok = strconv.parse_int(value)
+		case "select":
+			o.select = value
+		case "zoom":
+			o.zoom, ok = strconv.parse_f32(value)
 		case:
 			fmt.eprintfln("agora: unknown option %s", name)
 			return false

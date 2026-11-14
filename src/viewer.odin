@@ -9,10 +9,12 @@ import "core:fmt"
 import "core:math"
 import "core:sync"
 import "core:thread"
+import "core:strconv"
 import "core:time"
 import engine "engine"
 import "gt:devtools"
 import "gt:draw"
+import "gt:font"
 import "gt:host"
 import "gt:lucide"
 import "gt:platform"
@@ -50,6 +52,7 @@ Snapshot :: struct {
 	money:    []i64,
 	goods:    []i64,
 	land:     []u16,
+	cell_price: []i64,
 	elevation: []u16,
 	biome:    []u8,
 	prices:   []i64,
@@ -71,7 +74,13 @@ Snapshot :: struct {
 	cities:    [CITY_SLOTS]City,
 	cities_n:  int,
 	price_mean: i64,
+	// the people of the chosen cell, and the cell itself
+	probe_cell: u32,
+	probe:      [PROBE_SLOTS]engine.Probe,
+	probe_n:    int,
 }
+
+PROBE_SLOTS :: 24
 
 CITY_SLOTS :: 6
 
@@ -89,6 +98,7 @@ sim_snapshot_make :: proc(s: ^Snapshot, cells: int) {
 	s.money = make([]i64, cells)
 	s.goods = make([]i64, cells)
 	s.land = make([]u16, cells)
+	s.cell_price = make([]i64, cells)
 	s.elevation = make([]u16, cells)
 	s.biome = make([]u8, cells)
 }
@@ -99,6 +109,7 @@ sim_snapshot_destroy :: proc(s: ^Snapshot) {
 	delete(s.money)
 	delete(s.goods)
 	delete(s.land)
+	delete(s.cell_price)
 	delete(s.elevation)
 	delete(s.biome)
 	s^ = {}
@@ -114,12 +125,15 @@ Sim :: struct {
 	rate:    int, // steps a second; 0: as fast as the world goes
 	pub:     Snapshot, // what the window copies
 	work:    Snapshot, // what the thread fills, then publishes
+	// the cell the window wants the people of, or -1
+	want_cell: int,
 	elapsed: time.Duration,
 }
 
 sim_start :: proc(sim: ^Sim, w: engine.World, rate: int) {
 	sim.world = w
 	sim.playing = true
+	sim.want_cell = -1
 	sim.rate = rate
 	sim.running = true
 	cells := w.width * w.height
@@ -211,6 +225,14 @@ sim_publish :: proc(sim: ^Sim) {
 		}
 		sim.work.price_mean = count > 0 ? sum / count : 0
 	}
+	// the chosen cell's people, asked for by the window
+	sync.mutex_lock(&sim.mu)
+	want := sim.want_cell
+	sync.mutex_unlock(&sim.mu)
+	sim.work.probe_cell = want < 0 ? 0 : u32(want)
+	sim.work.probe_n = 0
+	if want >= 0 { sim.work.probe_n = engine.probe_agents(w, u32(want), sim.work.probe[:]) }
+	for c in 0 ..< len(w.cells) { sim.work.cell_price[c] = w.markets[engine.market_of(w, u32(c))].price }
 	for m in 0 ..< len(w.markets) { sim.work.prices[m] = w.markets[m].price }
 	r := engine.report(w)
 	sim.work.step = w.step
@@ -245,11 +267,13 @@ sim_publish :: proc(sim: ^Sim) {
 	sim.pub.series_hunger = sim.work.series_hunger
 	sim.pub.series_gini = sim.work.series_gini
 	sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean = sim.work.cities, sim.work.cities_n, sim.work.price_mean
+	sim.pub.probe_cell, sim.pub.probe, sim.pub.probe_n = sim.work.probe_cell, sim.work.probe, sim.work.probe_n
 	copy(sim.pub.people, sim.work.people)
 	copy(sim.pub.hunger, sim.work.hunger)
 	copy(sim.pub.money, sim.work.money)
 	copy(sim.pub.goods, sim.work.goods)
 	copy(sim.pub.land, sim.work.land)
+	copy(sim.pub.cell_price, sim.work.cell_price)
 	copy(sim.pub.elevation, sim.work.elevation)
 	copy(sim.pub.biome, sim.work.biome)
 	copy(sim.pub.prices, sim.work.prices)
@@ -266,14 +290,23 @@ sim_copy :: proc(sim: ^Sim, out: ^Snapshot) {
 	out.series_step, out.series_goods = sim.pub.series_step, sim.pub.series_goods
 	out.series_hunger, out.series_gini = sim.pub.series_hunger, sim.pub.series_gini
 	out.cities, out.cities_n, out.price_mean = sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean
+	out.probe_cell, out.probe, out.probe_n = sim.pub.probe_cell, sim.pub.probe, sim.pub.probe_n
 	copy(out.people, sim.pub.people)
 	copy(out.hunger, sim.pub.hunger)
 	copy(out.money, sim.pub.money)
 	copy(out.goods, sim.pub.goods)
 	copy(out.land, sim.pub.land)
+	copy(out.cell_price, sim.pub.cell_price)
 	copy(out.elevation, sim.pub.elevation)
 	copy(out.biome, sim.pub.biome)
 	copy(out.prices, sim.pub.prices)
+	sync.mutex_unlock(&sim.mu)
+}
+
+// The cell whose people the window shows (or -1 for none).
+sim_choose :: proc(sim: ^Sim, cell: int) {
+	sync.mutex_lock(&sim.mu)
+	sim.want_cell = cell
 	sync.mutex_unlock(&sim.mu)
 }
 
@@ -301,6 +334,11 @@ App :: struct {
 	layer:    Layer,
 	zoom:     f32,
 	cx, cy:   f32,
+	selected_cell:   int,
+	selected_person: int,
+	hover_cell:      int,
+	dragged:         bool,
+	drag_cx, drag_cy: f32,
 	devtools: ^devtools.Server,
 	shown:    ui.Theme_Shown,
 }
@@ -313,6 +351,44 @@ Map_Draw :: struct {
 	layer: Layer,
 	zoom:  f32, // 1: the whole world; 8: a cell is eight times wider
 	cx, cy: f32, // the centre of the view, in cells
+	font:  font.Font_Id, // the labels of the biggest places
+	font_size: f32,
+	selected_cell: int,
+	probe:   []engine.Probe,
+	probe_n: int,
+}
+
+// The part of the world a view shows, and the size of a cell on the screen.
+Map_View :: struct {
+	x0, y0:  f32,
+	width, height: f32,
+	cell_x, cell_y: f32,
+	rect: draw.Rect,
+}
+
+map_view :: proc(s: ^Snapshot, zoom, cx, cy: f32, r: draw.Rect) -> Map_View {
+	z := clamp(zoom, 1, 16)
+	view_w := f32(s.width) / z
+	view_h := f32(s.height) / z
+	v := Map_View {
+		x0     = clamp(cx - view_w * 0.5, 0, f32(s.width) - view_w),
+		y0     = clamp(cy - view_h * 0.5, 0, f32(s.height) - view_h),
+		width  = view_w,
+		height = view_h,
+		rect   = r,
+	}
+	v.cell_x = (r.max.x - r.min.x) / view_w
+	v.cell_y = (r.max.y - r.min.y) / view_h
+	return v
+}
+
+// The cell under a point of the map ("-" outside it).
+cell_at :: proc(v: Map_View, s: ^Snapshot, p: draw.Vec2) -> int {
+	if p.x < v.rect.min.x || p.y < v.rect.min.y || p.x > v.rect.max.x || p.y > v.rect.max.y { return -1 }
+	x := int(v.x0 + (p.x - v.rect.min.x) / v.cell_x)
+	y := int(v.y0 + (p.y - v.rect.min.y) / v.cell_y)
+	if x < 0 || y < 0 || x >= s.width || y >= s.height { return -1 }
+	return y * s.width + x
 }
 
 // The map: one rectangle a cell, shaded by the layer chosen, from the layer's emptiest cell to its fullest, so that a
@@ -322,14 +398,10 @@ map_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	s := d.snap
 	if s.width == 0 || len(s.people) == 0 { return }
 	r := b.rect
-	// the part of the world the view shows, and the size of a cell on the screen
-	zoom := clamp(d.zoom, 1, 16)
-	view_w := f32(s.width) / zoom
-	view_h := f32(s.height) / zoom
-	x0 := clamp(d.cx - view_w * 0.5, 0, f32(s.width) - view_w)
-	y0 := clamp(d.cy - view_h * 0.5, 0, f32(s.height) - view_h)
-	cell_x := (r.max.x - r.min.x) / view_w
-	cell_y := (r.max.y - r.min.y) / view_h
+	v := map_view(s, d.zoom, d.cx, d.cy, r)
+	x0, y0 := v.x0, v.y0
+	cell_x, cell_y := v.cell_x, v.cell_y
+	view_w, view_h := v.width, v.height
 	cell := min(cell_x, cell_y)
 	sum: f64
 	occupied: int
@@ -358,7 +430,7 @@ map_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 			draw.rect(dc, {{px, py}, {px + cell_x + 0.5, py + cell_y + 0.5}}, colour)
 		}
 	}
-	// the biggest places, as dots
+	// the biggest places: their dots, and their names when the view is close enough
 	for i in 0 ..< s.cities_n {
 		city := s.cities[i]
 		px := r.min.x + (f32(city.x) - x0) * cell_x + cell_x * 0.5
@@ -366,8 +438,70 @@ map_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 		if px < r.min.x || py < r.min.y || px > r.max.x || py > r.max.y { continue }
 		radius := clamp(cell * 0.4, 1.5, 6)
 		draw.rect(dc, {{px - radius, py - radius}, {px + radius, py + radius}}, draw.hex(0xFFF3D6FF), radius)
+		if d.zoom >= 2.5 && d.font != 0 {
+			name := city_name(city.x, city.y, city.biome)
+			draw.text(dc, d.font, max(d.font_size * 1.1, 10), {px + radius + 3, py - radius - 2}, draw.hex(0xFFF3D6FF), name)
+		}
+	}
+	// the chosen cell: a ring, and its people as dots when the view is close enough to see them
+	if d.selected_cell >= 0 && d.selected_cell < s.width * s.height {
+		cell := d.selected_cell
+		cx := int(cell) % s.width
+		cy := int(cell) / s.width
+		px := r.min.x + (f32(cx) - x0) * cell_x
+		py := r.min.y + (f32(cy) - y0) * cell_y
+		draw.rect(dc, {{px, py}, {px + cell_x, py + cell_y}}, {}, 0, 1.5, 1, draw.hex(0xFFF3D6FF))
+		if d.zoom >= 4 && d.probe_n > 0 {
+			cols := 6
+			rows := max(1, (d.probe_n + cols - 1) / cols)
+			dot := clamp(min(cell_x, cell_y) / 12, 1.2, 4)
+			for i in 0 ..< d.probe_n {
+				ix := i % cols
+				iy := i / cols
+				gx := px + cell_x * (0.18 + 0.64 * f32(ix) / f32(cols - 1))
+				gy := py + cell_y * (0.25 + 0.5 * f32(iy) / f32(max(1, rows - 1)))
+				person_hunger := f32(d.probe[i].hunger) / 100
+				draw.rect(dc, {{gx - dot, gy - dot}, {gx + dot, gy + dot}}, draw.mix(draw.hex(0xFFF3D6FF), draw.hex(0xF0715FFF), person_hunger), dot)
+			}
+		}
 	}
 	draw.rect(dc, r, {}, 0, 1, 1, ui.color("window border"))
+}
+
+// A place's name, made from where it is: the same cell always has the same name.
+city_name :: proc(x, y: int, biome: u8) -> string {
+	first := [8]string{"Ash", "Bran", "Cor", "Dun", "El", "Fen", "Gal", "Hal"}
+	second := [8]string{"mere", "ford", "wick", "ton", "holm", "dale", "bay", "reth"}
+	i := (x * 7 + y * 3) % len(first)
+	j := (x * 3 + y * 11) % len(second)
+	return fmt.tprintf("%s%s", first[i], second[j])
+}
+
+// The biome's name, for the chosen place.
+biome_name :: proc(biome: u8) -> string {
+	switch engine.Biome(biome) {
+	case .Ocean:
+		return "sea"
+	case .Ice:
+		return "ice"
+	case .Tundra:
+		return "tundra"
+	case .Desert:
+		return "desert"
+	case .Grass:
+		return "grassland"
+	case .Forest:
+		return "forest"
+	case .Mountain:
+		return "mountain"
+	}
+	return "?"
+}
+
+// The price of the market a cell belongs to, as the engine thread published it.
+market_price :: proc(s: ^Snapshot, cell: int) -> i64 {
+	if cell < 0 || cell >= len(s.cell_price) { return 0 }
+	return s.cell_price[cell]
 }
 
 // The ground of one cell: its biome's colour, its sea's depth, and the slope's light.
@@ -474,6 +608,12 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	s := &app.snap
 	icons := ui.lucide_icons()
 
+	// the keyboard: the world's own keys, wherever the pointer is
+	if ui.key_press(.Space) { sim_set(&app.sim, playing = !sim_playing(&app.sim)) }
+	if ui.key_press(.Equal) { app.zoom = min(app.zoom * 1.35, 16) }
+	if ui.key_press(.Minus) { app.zoom = max(app.zoom / 1.35, 1) }
+	if ui.key_press(.Home) { app.zoom, app.cx, app.cy = 1, 0, 0 }
+
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.column() {
 		// the bar: the name and the world's state, then pause and the rate
@@ -486,6 +626,15 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 			ui.spacer(ui.px(em * 1.2))
 			ui.label(fmt.tprintf("step %d · %s people · %s goods", s.step, compact(f64(s.agents)), compact(total_goods(s))))
 			ui.spacer(ui.fill())
+			// the layers, then the world's clock
+			layer_index := int(app.layer)
+			ui.next({width = ui.px(em * 20)})
+			if ui.segmented("layers", LAYER_LABELS[:], &layer_index) { app.layer = Layer(layer_index) }
+			ui.spacer(ui.px(em * 0.8))
+			if ui.button("zoom_out", "", lucide.ZOOM_OUT, {icon_font = icons, tip = "Further"}).clicked { app.zoom = max(app.zoom / 1.35, 1) }
+			if ui.button("zoom_in", "", lucide.ZOOM_IN, {icon_font = icons, tip = "Closer"}).clicked { app.zoom = min(app.zoom * 1.35, 12) }
+			if ui.button("home", "", lucide.MAXIMIZE, {icon_font = icons, tip = "The whole world"}).clicked { app.zoom, app.cx, app.cy = 1, 0, 0 }
+			ui.spacer(ui.px(em * 0.8))
 			playing := sim_playing(&app.sim)
 			if ui.button("pause", "", playing ? lucide.PAUSE : lucide.PLAY, {icon_font = icons, tip = playing ? "Pause the world" : "Let the world run", face = .Raised}).clicked {
 				sim_set(&app.sim, playing = !playing)
@@ -499,49 +648,61 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 			ui.spacer(ui.px(em * 0.9))
 		}
 
+		ui.spacer(ui.px(em * 0.4))
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.row() {
 			// the map: its layers and its view, over the map in its frame
 			ui.next({width = ui.fill(), height = ui.fill()})
 			if ui.column() {
 				ui.spacer(ui.px(em * 0.7))
-				ui.next({width = ui.fill(), height = ui.px(em * 3)})
-				if ui.row(.Center) {
-					ui.spacer(ui.px(em * 0.9))
-					layer_index := int(app.layer)
-					ui.next({width = ui.px(em * 21)})
-					if ui.segmented("layers", LAYER_LABELS[:], &layer_index) { app.layer = Layer(layer_index) }
-					ui.spacer(ui.px(em * 1.2))
-					ui.label(layer_caption(app.layer))
-					ui.spacer(ui.fill())
-					if ui.button("zoom_out", "", lucide.ZOOM_OUT, {icon_font = icons, tip = "Further"}).clicked { app.zoom = max(app.zoom / 1.35, 1) }
-					if ui.button("zoom_in", "", lucide.ZOOM_IN, {icon_font = icons, tip = "Closer"}).clicked { app.zoom = min(app.zoom * 1.35, 12) }
-					if ui.button("home", "", lucide.MAXIMIZE, {icon_font = icons, tip = "The whole world"}).clicked { app.zoom, app.cx, app.cy = 1, 0, 0 }
-					ui.spacer(ui.px(em * 0.3))
-					for d in ([4][2]f32{{-1, 0}, {0, -1}, {0, 1}, {1, 0}}) {
-						glyph := d[0] < 0 ? lucide.ARROW_LEFT : d[0] > 0 ? lucide.ARROW_RIGHT : d[1] < 0 ? lucide.ARROW_UP : lucide.ARROW_DOWN
-						if ui.button(fmt.tprintf("pan%d%d", int(d[0]), int(d[1])), "", glyph, {icon_font = icons, tip = "Move the view"}).clicked {
-							app.cx += d[0] * f32(s.width) / app.zoom * 0.25
-							app.cy += d[1] * f32(s.height) / app.zoom * 0.25
-						}
-					}
-					ui.spacer(ui.px(em * 0.9))
-				}
-				// the frame: a plate, and the map in a well inside it
 				ui.next({width = ui.fill(), height = ui.fill()})
-				frame := ui.build_box({.Draw_Background, .Draw_Border, .Plate}, "map_frame")
+				frame := ui.build_box({.Draw_Background, .Draw_Border}, "map_frame")
 				if ui.parent(frame) {
-					ui.spacer(ui.px(em * 0.55))
+					ui.spacer(ui.px(em * 0.25))
 					ui.next({width = ui.fill(), height = ui.fill()})
-					if ui.well("map_well") {
+					{
 						md := ui.frame_new(Map_Draw)
 						md.snap = s
 						md.layer = app.layer
 						md.zoom = app.zoom
 						md.cx = app.cx
 						md.cy = app.cy
+						md.font = app.shared.font
+						md.font_size = em
+						md.selected_cell = app.selected_cell
+						md.probe = s.probe[:]
+						md.probe_n = s.probe_n
 						ui.next({width = ui.fill(), height = ui.fill()})
-						ui.custom("map", map_draw, md)
+						map_box := ui.custom("map", map_draw, md, {.Clickable})
+						// the pointer: which cell it is over, the drag that moves the view, the wheel that zooms, and the
+						// click that chooses a place
+						view := map_view(s, app.zoom, app.cx, app.cy, map_box.rect)
+						app.hover_cell = cell_at(view, s, ui.mouse_pos())
+						sig := ui.signal(map_box)
+						if sig.pressed {
+							app.drag_cx, app.drag_cy = app.cx, app.cy
+							app.dragged = false
+						}
+						if sig.dragging {
+							if abs(sig.drag_delta.x) + abs(sig.drag_delta.y) > 4 { app.dragged = true }
+							if app.dragged {
+								app.cx = app.drag_cx - sig.drag_delta.x / view.cell_x
+								app.cy = app.drag_cy - sig.drag_delta.y / view.cell_y
+							}
+						}
+						if sig.clicked && !app.dragged && app.hover_cell >= 0 {
+							app.selected_cell = app.hover_cell
+							app.selected_person = -1
+							sim_choose(&app.sim, app.selected_cell)
+						}
+						if sig.double_clicked && app.hover_cell >= 0 {
+							app.cx = f32(app.hover_cell % s.width) + 0.5
+							app.cy = f32(app.hover_cell / s.width) + 0.5
+							app.zoom = min(app.zoom * 2.2, 12)
+						}
+						if sig.scrolled.y != 0 {
+							app.zoom = clamp(app.zoom * math.pow(1.0035, sig.scrolled.y), 1, 16)
+						}
 					}
 					ui.spacer(ui.px(em * 0.55))
 				}
@@ -582,6 +743,54 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 					for i in 0 ..< s.cities_n {
 						city := s.cities[i]
 						table_row(em, city)
+					}
+				}
+
+				ui.spacer(ui.px(em * 0.8))
+				if ui.card("The chosen place", lucide.MAP_PIN) {
+					if app.selected_cell < 0 {
+						ui.label("Click a cell of the map.")
+					} else {
+						cell := app.selected_cell
+						x, y := cell % s.width, cell / s.width
+						people := s.people[cell]
+						hunger := people > 0 ? f64(s.hunger[cell]) / f64(people) : 0
+						fact("Name", city_name(x, y, s.biome[cell]))
+						fact("Ground", biome_name(s.biome[cell]))
+						fact("At", fmt.tprintf("%d, %d", x, y))
+						fact("People", fmt.tprintf("%d", people))
+						fact("Hunger", fmt.tprintf("%.1f", hunger))
+						fact("Price", fmt.tprintf("%d", market_price(s, cell)))
+						if s.probe_n > 0 {
+							ui.spacer(ui.px(em * 0.4))
+							ui.hline(ui.fill())
+							ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+							ui.label("  The people here")
+							count := min(s.probe_n, 6)
+							for i in 0 ..< count {
+								p := s.probe[i]
+								label := fmt.tprintf("#%d  %s  hunger %.0f", p.id, compact(f64(p.money)), f64(p.hunger))
+								if ui.button(fmt.tprintf("person%d", p.id), label, o = {width = ui.fill(), left = true, quiet = true, intent = app.selected_person == int(p.id) ? .Primary : .Neutral}).clicked {
+									app.selected_person = int(p.id)
+								}
+							}
+						}
+					}
+				}
+
+				if app.selected_person >= 0 {
+					// the state of the person chosen among the place's people
+					for i in 0 ..< s.probe_n {
+						p := s.probe[i]
+						if int(p.id) != app.selected_person { continue }
+						ui.spacer(ui.px(em * 0.8))
+						if ui.card(fmt.tprintf("Person #%d", p.id), lucide.USER) {
+							fact("Money", compact(f64(p.money)))
+							fact("Goods", fmt.tprintf("%.2f", f64(p.goods) / 100))
+							fact("Hunger", fmt.tprintf("%d", p.hunger))
+							fact("Health", fmt.tprintf("%d", p.health))
+							fact("Skill", fmt.tprintf("%d", p.skill))
+						}
 					}
 				}
 
@@ -718,6 +927,12 @@ layer_caption :: proc(layer: Layer) -> string {
 	return ""
 }
 
+// The byte of the first `c` in `s` (-1 when it is not there).
+index_byte :: proc(s: string, c: u8) -> int {
+	for i in 0 ..< len(s) { if s[i] == c { return i } }
+	return -1
+}
+
 mean_money :: proc(s: ^Snapshot) -> f64 {
 	if s.agents == 0 { return 0 }
 	total: i64
@@ -818,11 +1033,12 @@ chart :: proc(ring: []f64, n, next: int, accent: draw.Color, em: f32, id: string
 // The viewer's entry: a world of `agents` people, the window, and the loop. `frames` >= 0: that many frames of a hidden
 // window, then exit (the check that it runs); `headless`: no window of the system at all (the picture comes through the
 // DevTools endpoint, or the frames are only counted).
-viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: bool) -> int {
+viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: bool, select: string, zoom: f32) -> int {
 	app := new(App)
 	defer free(app)
 	app.layer = .Land
-	app.zoom = 1
+	app.zoom = clamp(zoom > 0 ? zoom : 1, 1, 16)
+	app.selected_cell, app.selected_person = -1, -1
 	w := engine.world_make({width = 160, height = 96, agents = int(agents), seed = seed})
 	cells := w.width * w.height
 	app.snap.width, app.snap.height = w.width, w.height
@@ -832,6 +1048,19 @@ viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: b
 
 	sim_start(&app.sim, w, int(steps_per_second))
 	defer sim_stop(&app.sim)
+
+	// `--select:x,y` (a place for the picture or a demonstration) and the view that shows it
+	if select != "" {
+		if comma := index_byte(select, ','); comma > 0 {
+			if x, xok := strconv.parse_int(select[:comma]); xok {
+				if y, yok := strconv.parse_int(select[comma + 1:]); yok && x >= 0 && y >= 0 && x < w.width && y < w.height {
+					app.selected_cell = y * w.width + x
+					app.cx, app.cy = f32(x) + 0.5, f32(y) + 0.5
+					sim_choose(&app.sim, app.selected_cell)
+				}
+			}
+		}
+	}
 
 	if !host.host_open(&app.main, &app.shared, {title = "agora", size = {1360, 900}, headless = headless}, build, app) { return 1 }
 	defer host.host_close(&app.main)

@@ -22,8 +22,14 @@ costs no step.
 - **The map**: the ground drawn from its biome, its sea's depth and the slope's light (a west face is bright, an east face
   dark), then the layer chosen laid over it as a tint: **Land** (the ground, the default), People (density), Hunger (mean
   per cell), Wealth (money per person). The scale is twice the mean of the layer, except hunger (against 60 of 100). The
-  biggest places are dots on it. Zoom and pan: the two zoom buttons, the whole-world button and the four arrows; a cell is
-  a rectangle of the view, so the map never leaves empty room.
+  biggest places are dots, with their names once the view is close; a chosen cell is ringed, and its people are drawn as
+  dots inside it from a zoom of 4.
+- **Moving in it**: the wheel zooms, a drag moves the view, a double click flies to a place, and the header's buttons do
+  the same without a mouse (zoom out, zoom in, the whole world). The keyboard: Space pauses, + and − zoom, Home returns to
+  the whole world.
+- **Choosing a place**: a click on a cell selects it; the engine publishes its people (up to 24), the panel says its name,
+  its ground, its people, its hunger and its market's price, and lists its people; a person chosen there has its own panel
+  (money, goods, hunger, health, skill).
 - **The header**: the mark, the step, the people and the goods; Pause/Play; the rate as a segmented control (×1, ×10,
   ×30, ×120).
 - **The panels**: *The world* (people, hunger, starving, Gini as figures; trades, goods, money per person and health as

@@ -25,7 +25,7 @@ run_shot :: proc(args: []string) -> int {
 		more[len(env)] = fmt.tprintf("VK_DRIVER_FILES=%s", driver)
 		env = more
 	}
-	process, err := toolbox.start_group({"build/agora", "--headless", "--agents:400000", "--rate:240"}, env, nil)
+	process, err := toolbox.start_group({"build/agora", "--headless", "--agents:400000", "--rate:240", "--zoom:5", "--select:32,82"}, env, nil)
 	if err != nil {
 		fmt.eprintfln("agoratool shot: the viewer does not start")
 		return 1
@@ -50,7 +50,7 @@ run_shot :: proc(args: []string) -> int {
 	// a moment of world before the picture: the charts have something to show
 	time.sleep(2500 * time.Millisecond)
 	if !toolbox.run(
-		{"odin", "run", "ext/gui_toolkit/tools/tk", "-out:build/tk", "--", "cdp", "--port", SHOT_PORT, "shot", out},
+		{"odin", "run", "ext/gui_toolkit/tools/tk", "-out:build/tk", "--", "cdp", "--port", SHOT_PORT, "wheel", "1150", "520", "6", ",", "idle", ",", "shot", out},
 		{echo = true},
 	) {
 		fmt.eprintln("agoratool shot: the picture could not be taken")
