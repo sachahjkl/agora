@@ -1,9 +1,10 @@
 // agora: a world of autonomous people, simulated in real time and watched through sensors.
 //
-//   agora run [--agents:100000] [--steps:1000] [--seed:1] [--width:64] [--height:64] [--every:100] [--quiet]
+//   agora                     the window: the world runs beside it, in a thread, and sensors feed the map and the charts
+//   agora run [options]       the engine alone, headless, with a report on the standard output
+//   agora --frames:N          N frames of a hidden window, then exit (the check that the viewer runs)
 //
 // The seed founds the world: the same seed and the same options give the same run, byte for byte, on every machine.
-// The engine does the work; the command line is its first observer, and the sensors' first reader.
 package agora
 
 import "core:fmt"
@@ -16,56 +17,78 @@ APP_NAME    :: "agora"
 APP_VERSION :: "0.2.0"
 
 Options :: struct {
-	agents: int,
-	steps:  int,
-	seed:   u64,
-	width:  int,
-	height: int,
-	every:  int,
+	agents:     int,
+	steps:      int,
+	seed:       u64,
+	width:      int,
+	height:     int,
+	every:      int,
 	gini_every: int,
-	quiet:  bool,
+	rate:       int,
+	frames:     int,
+	headless:   bool,
+	quiet:      bool,
 }
 
 DEFAULT_OPTIONS :: Options {
-	agents = 100_000,
-	steps  = 1_000,
-	seed   = 1,
-	width  = 64,
-	height = 64,
-	every  = 100,
+	agents     = 200_000,
+	steps      = 1_000,
+	seed       = 1,
+	width      = 64,
+	height     = 64,
+	every      = 100,
 	gini_every = 10,
+	rate       = 30,
+	frames     = -1,
 }
 
 usage :: proc() {
 	fmt.printfln("%s %s", APP_NAME, APP_VERSION)
-	fmt.println("agora run [options]")
-	fmt.println("  --agents:N    people in the world (100000)")
-	fmt.println("  --steps:N     steps to simulate (1000)")
-	fmt.println("  --seed:N      the world's seed: the same seed gives the same run (1)")
-	fmt.println("  --width:N     cells across (64)")
-	fmt.println("  --height:N    cells down (64)")
-	fmt.println("  --every:N     print a line every N steps (100)")
-	fmt.println("  --gini-every:N  take the exact Gini every N steps; 0: never, the cheapest (10)")
-	fmt.println("  --quiet       the last line only (the steps per second)")
+	fmt.println("agora                        the window, its world running beside it")
+	fmt.println("agora run [options]          the engine alone, headless")
+	fmt.println("  --agents:N      people in the world (200000)")
+	fmt.println("  --steps:N       headless: steps to simulate (1000)")
+	fmt.println("  --seed:N        the world's seed: the same seed gives the same run (1)")
+	fmt.println("  --width:N       cells across (64)")
+	fmt.println("  --height:N      cells down (64)")
+	fmt.println("  --rate:N        the window's steps a second (30)")
+	fmt.println("  --every:N       headless: print a line every N steps (100)")
+	fmt.println("  --gini-every:N  the exact Gini every N steps; 0: never, the cheapest (10)")
+	fmt.println("  --frames:N      N frames of a hidden window, then exit")
+	fmt.println("  --headless      no window of the system (the picture through the DevTools endpoint)")
+	fmt.println("  --quiet         headless: the last line only")
 }
 
 main :: proc() {
-	if len(os.args) < 2 {
-		usage()
-		os.exit(1)
-	}
-	switch os.args[1] {
-	case "run":
-		os.exit(run(os.args[2:]))
-	case "version", "--version", "-v":
+	command := ""
+	args := os.args[1:]
+	if len(args) > 0 && args[0] == "run" {
+		command = "run"
+		args = args[1:]
+	} else if len(args) > 0 && (args[0] == "version" || args[0] == "--version") {
 		fmt.printfln("%s %s", APP_NAME, APP_VERSION)
-	case "help", "--help", "-h":
+		return
+	} else if len(args) > 0 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
 		usage()
-	case:
-		fmt.eprintfln("agora: no command %s", os.args[1])
+		return
+	} else if len(args) > 0 && args[0] != "--" && !has_prefix(args[0], "--") {
+		fmt.eprintfln("agora: no command %s", args[0])
 		usage()
 		os.exit(1)
 	}
+	o := DEFAULT_OPTIONS
+	if !parse(args, &o) {
+		usage()
+		os.exit(1)
+	}
+	if command == "run" {
+		os.exit(run_headless(&o))
+	}
+	os.exit(viewer_run(u64(o.agents), u64(o.rate), o.seed, o.frames, o.headless))
+}
+
+has_prefix :: proc(s, p: string) -> bool {
+	return len(s) >= len(p) && s[:len(p)] == p
 }
 
 // `--name:value` and `--name value`; a flag without a value is true.
@@ -78,8 +101,13 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 			i += 1
 			continue
 		}
+		if arg == "--headless" {
+			o.headless = true
+			i += 1
+			continue
+		}
 		name, value, has_value := split_flag(arg)
-		if len(name) < 2 || name[:2] != "--" {
+		if !has_prefix(name, "--") {
 			fmt.eprintfln("agora: unknown argument %s", arg)
 			return false
 		}
@@ -107,6 +135,10 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 			o.every, ok = strconv.parse_int(value)
 		case "gini-every":
 			o.gini_every, ok = strconv.parse_int(value)
+		case "rate":
+			o.rate, ok = strconv.parse_int(value)
+		case "frames":
+			o.frames, ok = strconv.parse_int(value)
 		case:
 			fmt.eprintfln("agora: unknown option %s", name)
 			return false
@@ -117,7 +149,7 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 		}
 		i += 1
 	}
-	return o.agents > 0 && o.steps > 0 && o.width > 0 && o.height > 0 && o.every > 0
+	return o.agents > 0 && o.steps >= 0 && o.width > 0 && o.height > 0 && o.every > 0 && o.rate > 0
 }
 
 @(private = "file")
@@ -130,12 +162,7 @@ split_flag :: proc(arg: string) -> (name, value: string, has_value: bool) {
 	return arg, "", false
 }
 
-run :: proc(args: []string) -> int {
-	o := DEFAULT_OPTIONS
-	if !parse(args, &o) {
-		usage()
-		return 1
-	}
+run_headless :: proc(o: ^Options) -> int {
 	w := engine.world_make({width = o.width, height = o.height, agents = o.agents, seed = o.seed})
 	defer engine.world_destroy(&w)
 

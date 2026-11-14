@@ -11,6 +11,8 @@ phenomenon directly.
 
 - `src/engine` is the engine: pure Odin, no window, advanced one step at a time. It is deterministic: a seed founds a
   world, and the same seed and options give the same run, byte for byte.
+- `src/viewer.odin` is the window: the world runs in a thread beside it and publishes a snapshot; the interface copies
+  that snapshot and draws it, and never touches the world.
 - The agents are columns (structure of arrays). Goods and money are 64-bit integers, so the books of every step balance
   to the unit.
 - A step has five passes over the agents: sort by market and open the books, produce and state intentions, resolve the
@@ -40,4 +42,5 @@ phenomenon directly.
   borders, war, sensors, viewer, and the build order.
 - [features/engine.md](features/engine.md): the step as built — its passes, its determinism, its books, its measures.
 - [features/sensors.md](features/sensors.md): the sensors as built, and the ones to come.
+- [features/viewer.md](features/viewer.md): the window over the world — its thread, its snapshot, what it shows, its look.
 - [data/world.md](data/world.md): the columns, the units, the constants and the invariants.

@@ -12,8 +12,13 @@ these rules.
 The engine runs headless and in real time; sensors measure what emerges; a viewer, in progress, shows the measures live
 and never touches the world.
 
-## What runs today (0.2.0)
+## What runs today (0.3.0)
 
+![agora's window: the map of the land, the counters and the charts](docs/screenshots/viewer.png)
+
+- **The window**: the world runs beside it in a thread, at 1 to 120 steps a second; the map shows the land (or the
+  people, the hunger, the wealth of a cell), and the counters and three charts say what the sensors see. The world is
+  never read by the window, and a frame costs no step.
 - **A deterministic world**: a seed founds the people, and the same seed gives the same run, byte for byte. Randomness is
   a pure function of (seed, step, agent, use), with no shared state.
 - **People in columns**: cell, goods, money, hunger, health, skill, in structure-of-arrays; the step visits them five
@@ -33,7 +38,8 @@ git clone --recurse-submodules https://github.com/sachahjkl/agora
 cd agora
 nix develop
 ./build.sh
-./build/agora run --agents:20000 --steps:300
+./build/agora                 # the window
+./build/agora run --agents:20000 --steps:300   # the engine alone, headless
 ```
 
 The program is written in [Odin](https://odin-lang.org) on [gui_toolkit](https://github.com/sachahjkl/gui_toolkit).

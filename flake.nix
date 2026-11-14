@@ -151,7 +151,8 @@
     formatter.${system} = pkgs.alejandra;
 
     devShells.${system}.default = pkgs.mkShell {
-      packages = [odin] ++ (with pkgs; [cargo rustc]) ++ preCommitCheck.enabledPackages;
+      # (sway: agoratool shot runs the viewer in a session nobody sees; dbus: sway starts its own bus)
+      packages = [odin] ++ (with pkgs; [cargo rustc sway dbus]) ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       shellHook =
         preCommitCheck.shellHook

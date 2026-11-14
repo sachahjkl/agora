@@ -41,6 +41,7 @@ main :: proc() {
 			{name = "bench", usage = "[agents] [steps]: a release build, the steps per second of the engine alone (opt-in: it measures time)", run = run_bench},
 			toolbox.logo_command(logo()),
 			{name = "card", usage = ": site/img/card.png, the picture a shared link shows", run = run_card},
+			{name = "shot", usage = "[file]: a picture of the viewer, in a sway nobody sees", run = run_shot},
 			toolbox.notices_command(p),
 			r[0],
 			r[1],

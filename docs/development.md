@@ -28,6 +28,7 @@ odin run tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool
 | `bench [agents] [steps]` | the engine alone, a release build: its steps per second (opt-in: it measures time) |
 | `logo` | `assets/logo*.png`, `.project/image.png` and `site/img/logo.png`, drawn by the toolkit's paint package |
 | `card` | `site/img/card.png`, the sharing card |
+| `shot [file]` | a picture of the viewer, with no window of the system: the offscreen window, its DevTools endpoint, and `tk cdp shot` |
 | `package`, `notes`, `ship` | the release's archive and SHA-256; the changelog's section; a version from a clean `master` (`gt:release`) |
 | `changelog new <type> <text> [-subject:…]`, `check`, `preview` | a fragment of `changelog.d/` (`gt:changelog`) |
 | `site build <site> <out>`, `site check` | the site's pages; the pages in a real browser (`gt:site`) |
@@ -37,11 +38,15 @@ odin run tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool
 ## The program
 
 ```sh
-build/agora run [--agents:N] [--steps:N] [--seed:N] [--width:N] [--height:N] [--every:N] [--gini-every:N] [--quiet]
+build/agora                                     # the window
+build/agora run [--agents:N] [--steps:N] [--seed:N] [--every:N] [--gini-every:N] [--quiet]   # headless
 ```
 
-The seed founds the world; `--gini-every:0` turns the exact Gini off, which is what the bench does (it sorts every
-person). The engine is in `src/engine`; its intent is [src/md/features/engine.md](../src/md/features/engine.md).
+The window runs the world in a thread and draws it from the snapshot the thread publishes (`src/viewer.odin`, its intent
+is [src/md/features/viewer.md](../src/md/features/viewer.md)): `--agents`, `--rate`, `--seed`, and `--headless` for the
+DevTools endpoint with no window of the system. The headless run prints the world's report; `--gini-every:0` turns the
+exact Gini off, which is what the bench does (it sorts every person). The engine is in `src/engine`; its intent is
+[src/md/features/engine.md](../src/md/features/engine.md).
 
 ## A change
 
