@@ -6,6 +6,7 @@ package agora
 
 
 import "core:fmt"
+import "core:math"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -13,6 +14,7 @@ import engine "engine"
 import "gt:devtools"
 import "gt:draw"
 import "gt:host"
+import "gt:lucide"
 import "gt:platform"
 import "gt:render"
 import "gt:ui"
@@ -27,7 +29,15 @@ Layer :: enum {
 	Wealth,
 }
 
-LAYER_NAMES := [Layer]string{.Land = "Land", .People = "People", .Hunger = "Hunger", .Wealth = "Wealth"}
+LAYER_LABELS := [4]string{"Land", "People", "Hunger", "Wealth"}
+RATE_LABELS := [4]string{"×1", "×10", "×30", "×120"}
+
+// The rate the world runs at now (for the segmented control).
+current_rate :: proc(sim: ^Sim) -> int {
+	sync.mutex_lock(&sim.mu)
+	defer sync.mutex_unlock(&sim.mu)
+	return sim.rate
+}
 
 // What the thread publishes and the window copies. The grid is in cells; the series is in steps.
 Snapshot :: struct {
@@ -40,6 +50,8 @@ Snapshot :: struct {
 	money:    []i64,
 	goods:    []i64,
 	land:     []u16,
+	elevation: []u16,
+	biome:    []u8,
 	prices:   []i64,
 	// the last report, for the counters
 	mean_hunger: f64,
@@ -55,6 +67,20 @@ Snapshot :: struct {
 	series_gini:   [SERIES]f64,
 	series_n:      int,
 	series_next:   int,
+	// the most populated cells, for the viewer's list and its dots
+	cities:    [CITY_SLOTS]City,
+	cities_n:  int,
+	price_mean: i64,
+}
+
+CITY_SLOTS :: 6
+
+City :: struct {
+	x, y:   int,
+	people: u32,
+	hunger: f64,
+	price:  i64,
+	biome:  u8,
 }
 
 sim_snapshot_make :: proc(s: ^Snapshot, cells: int) {
@@ -63,6 +89,8 @@ sim_snapshot_make :: proc(s: ^Snapshot, cells: int) {
 	s.money = make([]i64, cells)
 	s.goods = make([]i64, cells)
 	s.land = make([]u16, cells)
+	s.elevation = make([]u16, cells)
+	s.biome = make([]u8, cells)
 }
 
 sim_snapshot_destroy :: proc(s: ^Snapshot) {
@@ -71,6 +99,8 @@ sim_snapshot_destroy :: proc(s: ^Snapshot) {
 	delete(s.money)
 	delete(s.goods)
 	delete(s.land)
+	delete(s.elevation)
+	delete(s.biome)
 	s^ = {}
 }
 
@@ -144,7 +174,43 @@ sim_run :: proc(user: rawptr) {
 sim_publish :: proc(sim: ^Sim) {
 	w := &sim.world
 	engine.cells_snapshot(w, sim.work.people, sim.work.hunger, sim.work.money, sim.work.goods)
-	for c in 0 ..< len(w.cells) { sim.work.land[c] = w.cells[c].productivity }
+	for c in 0 ..< len(w.cells) {
+		sim.work.land[c] = w.cells[c].productivity
+		sim.work.elevation[c] = w.cells[c].elevation
+		sim.work.biome[c] = u8(w.cells[c].biome)
+	}
+	// the six most populated cells, and the mean price of the markets that hold people
+	sim.work.cities_n = 0
+	sim.work.cities = {}
+	for c in 0 ..< len(w.cells) {
+		people := sim.work.people[c]
+		if people == 0 { continue }
+		city := City {
+			x = c % w.width, y = c / w.width,
+			people = people,
+			hunger = f64(sim.work.hunger[c]) / f64(people),
+			price  = w.markets[engine.market_of(w, u32(c))].price,
+			biome  = u8(w.cells[c].biome),
+		}
+		// a small sorted insertion: at most six entries move
+		slot := min(sim.work.cities_n, CITY_SLOTS - 1)
+		for slot > 0 && sim.work.cities[slot - 1].people < city.people {
+			sim.work.cities[slot] = sim.work.cities[slot - 1]
+			slot -= 1
+		}
+		sim.work.cities[slot] = city
+		sim.work.cities_n = min(sim.work.cities_n + 1, CITY_SLOTS)
+	}
+	{
+		count: i64
+		sum: i64
+		for c in 0 ..< len(w.cells) {
+			if sim.work.people[c] == 0 { continue }
+			sum += w.markets[engine.market_of(w, u32(c))].price
+			count += 1
+		}
+		sim.work.price_mean = count > 0 ? sum / count : 0
+	}
 	for m in 0 ..< len(w.markets) { sim.work.prices[m] = w.markets[m].price }
 	r := engine.report(w)
 	sim.work.step = w.step
@@ -178,11 +244,14 @@ sim_publish :: proc(sim: ^Sim) {
 	sim.pub.series_goods = sim.work.series_goods
 	sim.pub.series_hunger = sim.work.series_hunger
 	sim.pub.series_gini = sim.work.series_gini
+	sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean = sim.work.cities, sim.work.cities_n, sim.work.price_mean
 	copy(sim.pub.people, sim.work.people)
 	copy(sim.pub.hunger, sim.work.hunger)
 	copy(sim.pub.money, sim.work.money)
 	copy(sim.pub.goods, sim.work.goods)
 	copy(sim.pub.land, sim.work.land)
+	copy(sim.pub.elevation, sim.work.elevation)
+	copy(sim.pub.biome, sim.work.biome)
 	copy(sim.pub.prices, sim.work.prices)
 	sync.mutex_unlock(&sim.mu)
 }
@@ -196,11 +265,14 @@ sim_copy :: proc(sim: ^Sim, out: ^Snapshot) {
 	out.series_n, out.series_next = sim.pub.series_n, sim.pub.series_next
 	out.series_step, out.series_goods = sim.pub.series_step, sim.pub.series_goods
 	out.series_hunger, out.series_gini = sim.pub.series_hunger, sim.pub.series_gini
+	out.cities, out.cities_n, out.price_mean = sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean
 	copy(out.people, sim.pub.people)
 	copy(out.hunger, sim.pub.hunger)
 	copy(out.money, sim.pub.money)
 	copy(out.goods, sim.pub.goods)
 	copy(out.land, sim.pub.land)
+	copy(out.elevation, sim.pub.elevation)
+	copy(out.biome, sim.pub.biome)
 	copy(out.prices, sim.pub.prices)
 	sync.mutex_unlock(&sim.mu)
 }
@@ -227,6 +299,8 @@ App :: struct {
 	sim:      Sim,
 	snap:     Snapshot,
 	layer:    Layer,
+	zoom:     f32,
+	cx, cy:   f32,
 	devtools: ^devtools.Server,
 	shown:    ui.Theme_Shown,
 }
@@ -237,6 +311,8 @@ THEME :: ui.Theme_Choice{name = "Midnight", mode = .Dark, finish = .Machined, gl
 Map_Draw :: struct {
 	snap:  ^Snapshot,
 	layer: Layer,
+	zoom:  f32, // 1: the whole world; 8: a cell is eight times wider
+	cx, cy: f32, // the centre of the view, in cells
 }
 
 // The map: one rectangle a cell, shaded by the layer chosen, from the layer's emptiest cell to its fullest, so that a
@@ -246,35 +322,88 @@ map_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	s := d.snap
 	if s.width == 0 || len(s.people) == 0 { return }
 	r := b.rect
-	cell := min((r.max.x - r.min.x) / f32(s.width), (r.max.y - r.min.y) / f32(s.height))
+	// the part of the world the view shows, and the size of a cell on the screen
+	zoom := clamp(d.zoom, 1, 16)
+	view_w := f32(s.width) / zoom
+	view_h := f32(s.height) / zoom
+	x0 := clamp(d.cx - view_w * 0.5, 0, f32(s.width) - view_w)
+	y0 := clamp(d.cy - view_h * 0.5, 0, f32(s.height) - view_h)
+	cell_x := (r.max.x - r.min.x) / view_w
+	cell_y := (r.max.y - r.min.y) / view_h
+	cell := min(cell_x, cell_y)
 	sum: f64
 	occupied: int
 	for c in 0 ..< s.width * s.height {
-		v := cell_value(s, c, d.layer)
 		if s.people[c] <= 0 { continue }
-		sum += v
+		sum += cell_value(s, c, d.layer if d.layer != .Land else .People)
 		occupied += 1
 	}
-	// the scale: hunger against a fixed level (a starving world is red), land against its full range, the others against
-	// twice their mean, so that an ordinary cell reads mid-way
+	// the scale: hunger against a fixed level (a starving world is red), the others against twice their mean, so that an
+	// ordinary cell reads mid-way. The ground has its own colours.
 	scale := occupied > 0 ? 2 * sum / f64(occupied) : 1
-	switch d.layer {
-	case .Hunger:
-		scale = 60
-	case .Land:
-		scale = 1000
-	case .People, .Wealth:
-	}
+	if d.layer == .Hunger { scale = 60 }
 	if scale <= 0 { scale = 1 }
-	for y in 0 ..< s.height {
-		for x in 0 ..< s.width {
+	x1 := min(s.width, int(x0 + view_w + 0.999))
+	y1 := min(s.height, int(y0 + view_h + 0.999))
+	for y in int(y0) ..< y1 {
+		for x in int(x0) ..< x1 {
 			c := y * s.width + x
-			t := s.people[c] > 0 || d.layer == .Land ? f32(clamp(cell_value(s, c, d.layer) / scale, 0, 1)) : 0
-			colour := layer_colour(d.layer, t)
-			draw.rect(dc, {{r.min.x + f32(x) * cell, r.min.y + f32(y) * cell}, {r.min.x + f32(x + 1) * cell + 0.5, r.min.y + f32(y + 1) * cell + 0.5}}, colour)
+			colour := ground_colour(s, x, y, c)
+			if d.layer != .Land && s.people[c] > 0 {
+				t := f32(clamp(cell_value(s, c, d.layer) / scale, 0, 1))
+				colour = draw.mix(colour, layer_colour(d.layer, t), 0.72)
+			}
+			px := r.min.x + (f32(x) - x0) * cell_x
+			py := r.min.y + (f32(y) - y0) * cell_y
+			draw.rect(dc, {{px, py}, {px + cell_x + 0.5, py + cell_y + 0.5}}, colour)
 		}
 	}
+	// the biggest places, as dots
+	for i in 0 ..< s.cities_n {
+		city := s.cities[i]
+		px := r.min.x + (f32(city.x) - x0) * cell_x + cell_x * 0.5
+		py := r.min.y + (f32(city.y) - y0) * cell_y + cell_y * 0.5
+		if px < r.min.x || py < r.min.y || px > r.max.x || py > r.max.y { continue }
+		radius := clamp(cell * 0.4, 1.5, 6)
+		draw.rect(dc, {{px - radius, py - radius}, {px + radius, py + radius}}, draw.hex(0xFFF3D6FF), radius)
+	}
 	draw.rect(dc, r, {}, 0, 1, 1, ui.color("window border"))
+}
+
+// The ground of one cell: its biome's colour, its sea's depth, and the slope's light.
+ground_colour :: proc(s: ^Snapshot, x, y, c: int) -> draw.Color {
+	biome := engine.Biome(s.biome[c])
+	height := f32(s.elevation[c]) / 65535
+	colour: draw.Color
+	switch biome {
+	case .Ocean:
+		colour = draw.mix(draw.hex(0x0B1A2EFF), draw.hex(0x1F506EFF), clamp((height - 0.25) / 0.25, 0, 1))
+	case .Ice:
+		colour = draw.hex(0xDDE8EEFF)
+	case .Tundra:
+		colour = draw.hex(0x7C8A6BFF)
+	case .Desert:
+		colour = draw.hex(0xC4A66AFF)
+	case .Grass:
+		colour = draw.hex(0x8FA659FF)
+	case .Forest:
+		colour = draw.hex(0x3F6B3AFF)
+	case .Mountain:
+		colour = height > 0.94 ? draw.hex(0xE4EBF0FF) : draw.hex(0x8A8578FF)
+	}
+	// the light: a slope that climbs to the north-west is bright, one that falls that way is dark
+	if biome != .Ocean {
+		dx, dy: f32
+		if x > 0 && x + 1 < s.width {
+			dx = f32(i32(s.elevation[c + 1])) - f32(i32(s.elevation[c - 1]))
+		}
+		if y > 0 && y + 1 < s.height {
+			dy = f32(i32(s.elevation[c + s.width])) - f32(i32(s.elevation[c - s.width]))
+		}
+		shade := clamp(1.05 - (dx + dy) / 9000, 0.62, 1.45)
+		colour = {clamp(colour.r * shade, 0, 1), clamp(colour.g * shade, 0, 1), clamp(colour.b * shade, 0, 1), colour.a}
+	}
+	return colour
 }
 
 cell_value :: proc(s: ^Snapshot, c: int, layer: Layer) -> f64 {
@@ -343,93 +472,250 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	sim_copy(&app.sim, &app.snap)
 	em := ui.font_size()
 	s := &app.snap
+	icons := ui.lucide_icons()
 
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.column() {
-		// the title bar's line
-		ui.next({width = ui.fill(), height = ui.px(em * 3)})
+		// the bar: the name and the world's state, then pause and the rate
+		ui.next({width = ui.fill(), height = ui.px(em * 3.6)})
 		if ui.row(.Center) {
-			ui.spacer(ui.px(em * 0.8))
-			ui.label(fmt.tprintf("agora · step %d · %d people", s.step, s.agents))
+			ui.spacer(ui.px(em * 0.9))
+			ui.next({width = ui.px(em * 2), height = ui.fill(), font = icons, text_align = .Center, fg = ui.color("accent")})
+			ui.label(fmt.tprintf("%s###mark", lucide.GLOBE))
+			ui.label("agora")
+			ui.spacer(ui.px(em * 1.2))
+			ui.label(fmt.tprintf("step %d · %s people · %s goods", s.step, compact(f64(s.agents)), compact(total_goods(s))))
 			ui.spacer(ui.fill())
 			playing := sim_playing(&app.sim)
-			if ui.button("pause", playing ? "Pause" : "Play", o = {intent = playing ? .Neutral : .Primary}).clicked {
+			if ui.button("pause", "", playing ? lucide.PAUSE : lucide.PLAY, {icon_font = icons, tip = playing ? "Pause the world" : "Let the world run", face = .Raised}).clicked {
 				sim_set(&app.sim, playing = !playing)
 			}
-			for rate in ([4]int{1, 10, 30, 120}) {
-				label := fmt.tprintf("×%d", rate)
-				ui.spacer(ui.px(em * 0.3))
-				if ui.button(fmt.tprintf("rate%d", rate), label, o = {intent = .Neutral}).clicked { sim_set(&app.sim, rate = rate) }
-			}
-			ui.spacer(ui.px(em * 0.8))
+			ui.spacer(ui.px(em * 0.6))
+			rates := [4]int{1, 10, 30, 120}
+			rate_now := 2
+			for r, i in rates { if r == current_rate(&app.sim) { rate_now = i } }
+			ui.next({width = ui.px(em * 21)})
+			if ui.segmented("rates", RATE_LABELS[:], &rate_now) { sim_set(&app.sim, rate = rates[rate_now]) }
+			ui.spacer(ui.px(em * 0.9))
 		}
 
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.row() {
-			// the map, on a plate of its own, with the layers under it
+			// the map: its layers and its view, over the map in its frame
 			ui.next({width = ui.fill(), height = ui.fill()})
 			if ui.column() {
 				ui.spacer(ui.px(em * 0.7))
-				ui.next({width = ui.fill(), height = ui.fill()})
-				map_plate := ui.build_box({.Draw_Background}, "map_plate")
-				if ui.parent(map_plate) {
-					md := ui.frame_new(Map_Draw)
-					md.snap = s
-					md.layer = app.layer
-					ui.next({width = ui.fill(), height = ui.fill()})
-					ui.custom("map", map_draw, md)
-				}
-				ui.next({width = ui.fill(), height = ui.px(em * 2.6)})
+				ui.next({width = ui.fill(), height = ui.px(em * 3)})
 				if ui.row(.Center) {
-					ui.spacer(ui.px(em * 0.8))
-					for layer in Layer {
-						ui.spacer(ui.px(em * 0.4))
-						if ui.button(fmt.tprintf("layer%d", int(layer)), LAYER_NAMES[layer], o = {intent = app.layer == layer ? .Primary : .Neutral}).clicked {
-							app.layer = layer
+					ui.spacer(ui.px(em * 0.9))
+					layer_index := int(app.layer)
+					ui.next({width = ui.px(em * 21)})
+					if ui.segmented("layers", LAYER_LABELS[:], &layer_index) { app.layer = Layer(layer_index) }
+					ui.spacer(ui.px(em * 1.2))
+					ui.label(layer_caption(app.layer))
+					ui.spacer(ui.fill())
+					if ui.button("zoom_out", "", lucide.ZOOM_OUT, {icon_font = icons, tip = "Further"}).clicked { app.zoom = max(app.zoom / 1.35, 1) }
+					if ui.button("zoom_in", "", lucide.ZOOM_IN, {icon_font = icons, tip = "Closer"}).clicked { app.zoom = min(app.zoom * 1.35, 12) }
+					if ui.button("home", "", lucide.MAXIMIZE, {icon_font = icons, tip = "The whole world"}).clicked { app.zoom, app.cx, app.cy = 1, 0, 0 }
+					ui.spacer(ui.px(em * 0.3))
+					for d in ([4][2]f32{{-1, 0}, {0, -1}, {0, 1}, {1, 0}}) {
+						glyph := d[0] < 0 ? lucide.ARROW_LEFT : d[0] > 0 ? lucide.ARROW_RIGHT : d[1] < 0 ? lucide.ARROW_UP : lucide.ARROW_DOWN
+						if ui.button(fmt.tprintf("pan%d%d", int(d[0]), int(d[1])), "", glyph, {icon_font = icons, tip = "Move the view"}).clicked {
+							app.cx += d[0] * f32(s.width) / app.zoom * 0.25
+							app.cy += d[1] * f32(s.height) / app.zoom * 0.25
 						}
 					}
-					ui.spacer(ui.px(em * 0.8))
-					ui.spacer(ui.fill())
-					ui.label("twice the mean is bright")
-					ui.spacer(ui.px(em * 0.8))
+					ui.spacer(ui.px(em * 0.9))
+				}
+				// the frame: a plate, and the map in a well inside it
+				ui.next({width = ui.fill(), height = ui.fill()})
+				frame := ui.build_box({.Draw_Background, .Draw_Border, .Plate}, "map_frame")
+				if ui.parent(frame) {
+					ui.spacer(ui.px(em * 0.55))
+					ui.next({width = ui.fill(), height = ui.fill()})
+					if ui.well("map_well") {
+						md := ui.frame_new(Map_Draw)
+						md.snap = s
+						md.layer = app.layer
+						md.zoom = app.zoom
+						md.cx = app.cx
+						md.cy = app.cy
+						ui.next({width = ui.fill(), height = ui.fill()})
+						ui.custom("map", map_draw, md)
+					}
+					ui.spacer(ui.px(em * 0.55))
 				}
 			}
 
-			// the counters, then the charts, each on its own plate
-			ui.next({width = ui.px(em * 24), height = ui.fill()})
-			if ui.column() {
+			// the panels: the figures, the places, the charts; the column scrolls when the window is short
+			ui.next({width = ui.px(em * 27), height = ui.fill()})
+			if ui.column(flags = {.View_Scroll_Y, .Clip}, id = "###panels") {
 				ui.spacer(ui.px(em * 0.7))
-				ui.next({width = ui.fill(), height = ui.px(em * 15.5)})
-				counters_plate := ui.build_box({.Draw_Background}, "counters")
-				if ui.parent(counters_plate) {
-					ui.spacer(ui.px(em * 0.5))
-					counter(app, "Money per person", fmt.tprintf("%.0f", mean_money(s)))
-					counter(app, "Goods in the world", fmt.tprintf("%.0f", total_goods(s)))
-					counter(app, "Hunger (mean, 0-100)", fmt.tprintf("%.1f", s.mean_hunger))
-					counter(app, "Starving", fmt.tprintf("%.1f%%", s.starving))
-					counter(app, "Health (mean, 0-100)", fmt.tprintf("%.1f", s.mean_health))
-					counter(app, "Gini of money", fmt.tprintf("%.3f", s.gini))
-					counter(app, "Trades of the last step", fmt.tprintf("%d", s.trades))
+				if ui.card("The world", lucide.ACTIVITY) {
+					ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
+					ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
+					if ui.row() {
+						ui.next({width = ui.fill(), height = ui.fill()})
+						if ui.column() { tile("People", compact(f64(s.agents)), "of the world") }
+						ui.next({width = ui.fill(), height = ui.fill()})
+						if ui.column() { tile("Hunger", fmt.tprintf("%.1f", s.mean_hunger), "of a hundred") }
+					}
+					ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
+					if ui.row() {
+						ui.next({width = ui.fill(), height = ui.fill()})
+						if ui.column() { tile("Starving", fmt.tprintf("%.1f%%", s.starving), "above 70") }
+						ui.next({width = ui.fill(), height = ui.fill()})
+						if ui.column() { tile("Gini", fmt.tprintf("%.3f", s.gini), "of money") }
+					}
+					ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
+					ui.hline(ui.fill())
+					fact("Trades in the last step", fmt.tprintf("%d", s.trades))
+					fact("Goods in the world", compact(total_goods(s)))
+					fact("Money per person", compact(mean_money(s)))
+					fact("Health", fmt.tprintf("%.1f", s.mean_health))
 				}
-				ui.spacer(ui.px(em * 0.7))
-				ui.next({width = ui.fill(), height = ui.px(em * 14.5)})
-				charts_plate := ui.build_box({.Draw_Background}, "charts")
-				if ui.parent(charts_plate) {
-					ui.spacer(ui.px(em * 0.5))
-					ui.spacer(ui.px(em * 0.3))
-					ui.label("  Goods in the world")
+
+				ui.spacer(ui.px(em * 0.8))
+				if ui.card("The biggest places", lucide.BUILDING_2) {
+					table_head(em, "place", "people", "hunger", "price")
+					ui.hline(ui.fill())
+					for i in 0 ..< s.cities_n {
+						city := s.cities[i]
+						table_row(em, city)
+					}
+				}
+
+				ui.spacer(ui.px(em * 0.8))
+				if ui.card("Over time", lucide.CHART_LINE) {
+					chart_head(em, "Goods in the world", compact(total_goods(s)))
 					chart(s.series_goods[:], s.series_n, s.series_next, draw.hex(0xF5B94AFF), em, "goods")
-					ui.spacer(ui.px(em * 0.3))
-					ui.label("  Hunger (mean)")
+					chart_head(em, "Hunger", fmt.tprintf("%.1f", s.mean_hunger))
 					chart(s.series_hunger[:], s.series_n, s.series_next, draw.hex(0xF0715FFF), em, "hunger")
-					ui.spacer(ui.px(em * 0.3))
-					ui.label("  Gini of money")
+					chart_head(em, "Gini of money", fmt.tprintf("%.3f", s.gini))
 					chart(s.series_gini[:], s.series_n, s.series_next, draw.hex(0x4FD1C5FF), em, "gini")
 				}
-				ui.spacer(ui.px(em * 0.7))
+				ui.spacer(ui.px(em * 0.8))
 			}
 		}
 	}
+}
+
+// A figure of the world's panel: its name, its value, and a word under it.
+tile :: proc(name, value, note: string) {
+	em := ui.font_size()
+	ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+	ui.label(name)
+	ui.next({width = ui.fill(), height = ui.px(em * 2.5)})
+	if ui.style({font_size = em * 1.9}) { ui.label(value) }
+	ui.next({width = ui.fill(), height = ui.px(em * 1.3)})
+	if ui.style({font_size = em * 0.85}) { ui.label(note) }
+}
+
+// A line of the world's panel: a name at the left, its value at the right.
+fact :: proc(name, value: string) {
+	em := ui.font_size()
+	ui.next({width = ui.fill(), height = ui.px(em * 1.7)})
+	if ui.row(.Center) {
+		ui.next({width = ui.fill(), height = ui.fill()})
+		ui.label(name)
+		if ui.style({text_align = .Right}) {
+			ui.next({width = ui.px(em * 9), height = ui.fill()})
+			ui.label(value)
+		}
+	}
+}
+
+// The places' table: the columns' names, then a rule, then the rows in fixed columns.
+table_head :: proc(em: f32, place, people, hunger, price: string) {
+	ui.next({width = ui.fill(), height = ui.px(em * 1.8)})
+	if ui.row(.Center) {
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.style({font_size = em * 0.85}) { ui.label(place) }
+		if ui.style({text_align = .Right, font_size = em * 0.85}) {
+			ui.next({width = ui.px(em * 5), height = ui.fill()})
+			ui.label(people)
+			ui.next({width = ui.px(em * 6.5), height = ui.fill()})
+			ui.label(hunger)
+			ui.next({width = ui.px(em * 7), height = ui.fill()})
+			ui.label(price)
+		}
+	}
+}
+
+Hunger_Bar :: struct {
+	t: f32,
+}
+
+hunger_bar :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Hunger_Bar)(user)
+	r := b.rect
+	h := r.max.y - r.min.y
+	draw.rect(dc, r, ui.color("well"), h * 0.5)
+	colour := draw.mix(draw.hex(0x6FBF73FF), draw.hex(0xF0715FFF), clamp(d.t, 0, 1))
+	draw.rect(dc, {r.min, {r.min.x + max(h, (r.max.x - r.min.x) * clamp(d.t, 0, 1)), r.max.y}}, colour, h * 0.5)
+}
+
+table_row :: proc(em: f32, city: City) {
+	ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+	if ui.row(.Center) {
+		// the place: its biome's colour, then its coordinates
+		ui.next({width = ui.px(em * 0.5), height = ui.px(em * 0.5), bg = biome_colour(city.biome)})
+		ui.build_box({.Draw_Background}, "")
+		ui.spacer(ui.px(em * 0.5))
+		ui.next({width = ui.fill(), height = ui.fill()})
+		ui.label(fmt.tprintf("%d, %d", city.x, city.y))
+		if ui.style({text_align = .Right}) {
+			ui.next({width = ui.px(em * 5), height = ui.fill()})
+			ui.label(fmt.tprintf("%d", city.people))
+			ui.next({width = ui.px(em * 6.5), height = ui.fill()})
+			if ui.row(.Center) {
+				bar := ui.frame_new(Hunger_Bar)
+				bar.t = f32(city.hunger / 100)
+				ui.next({width = ui.px(em * 2.6), height = ui.px(em * 0.5)})
+				ui.custom("hunger_bar", hunger_bar, bar)
+				ui.spacer(ui.px(em * 0.6))
+				ui.next({width = ui.fill(), height = ui.fill()})
+				ui.label(fmt.tprintf("%.0f", city.hunger))
+			}
+			ui.next({width = ui.px(em * 7), height = ui.fill()})
+			ui.label(fmt.tprintf("%d", city.price))
+		}
+	}
+}
+
+biome_colour :: proc(biome: u8) -> draw.Color {
+	switch engine.Biome(biome) {
+	case .Ocean:
+		return draw.hex(0x1F506EFF)
+	case .Ice:
+		return draw.hex(0xDDE8EEFF)
+	case .Tundra:
+		return draw.hex(0x7C8A6BFF)
+	case .Desert:
+		return draw.hex(0xC4A66AFF)
+	case .Grass:
+		return draw.hex(0x8FA659FF)
+	case .Forest:
+		return draw.hex(0x3F6B3AFF)
+	case .Mountain:
+		return draw.hex(0x8A8578FF)
+	}
+	return draw.hex(0xFFFFFFFF)
+}
+
+// What a layer shows, in one line under its name.
+layer_caption :: proc(layer: Layer) -> string {
+	switch layer {
+	case .Land:
+		return "The ground: from the sea to the ice"
+	case .People:
+		return "Where the people live"
+	case .Hunger:
+		return "Who does not eat enough"
+	case .Wealth:
+		return "Who holds the money"
+	}
+	return ""
 }
 
 mean_money :: proc(s: ^Snapshot) -> f64 {
@@ -445,16 +731,72 @@ total_goods :: proc(s: ^Snapshot) -> f64 {
 	return f64(total) / 100
 }
 
-counter :: proc(app: ^App, name, value: string) {
-	em := ui.font_size()
-	ui.next({width = ui.fill(), height = ui.px(em * 1.8)})
+// A number as a person reads a big one: 12.3M, 451k, 87.
+compact :: proc(v: f64) -> string {
+	if math.abs(v) >= 1e9 { return fmt.tprintf("%.2fB", v / 1e9) }
+	if math.abs(v) >= 1e6 { return fmt.tprintf("%.2fM", v / 1e6) }
+	if math.abs(v) >= 1e3 { return fmt.tprintf("%.1fk", v / 1e3) }
+	return fmt.tprintf("%.0f", v)
+}
+
+// A large figure: its name small above, its value large under it.
+stat :: proc(em: f32, name, value: string) {
+	ui.spacer(ui.px(em * 0.15))
+	ui.label(name)
+	if ui.style({font_size = em * 1.75}) { ui.label(value) }
+}
+
+// A line of a table: the place, then the numbers, in fixed columns.
+row :: proc(em: f32, place, people, hunger, price: string, header: bool) {
+	ui.next({width = ui.fill(), height = ui.px(em * 1.5)})
 	if ui.row(.Center) {
-		ui.spacer(ui.px(em))
-		ui.label(fmt.tprintf("%s###%s", name, name))
-		ui.spacer(ui.fill())
-		ui.label(fmt.tprintf("%s###%sv", value, name))
-		ui.spacer(ui.px(em))
+		ui.next({width = ui.fill(), height = ui.fill()})
+		ui.label(place)
+		if ui.style({text_align = .Right}) {
+			ui.next({width = ui.px(em * 5), height = ui.fill()})
+			ui.label(people)
+			ui.next({width = ui.px(em * 4.4), height = ui.fill()})
+			ui.label(hunger)
+			ui.next({width = ui.px(em * 7), height = ui.fill()})
+			ui.label(price)
+		}
 	}
+}
+
+// A chart's name and its value now, then the chart itself.
+chart_head :: proc(em: f32, name, value: string) {
+	ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+	if ui.row(.Center) {
+		ui.spacer(ui.px(em * 0.6))
+		ui.next({width = ui.fill(), height = ui.fill()})
+		ui.label(name)
+		if ui.style({text_align = .Right}) {
+			ui.next({width = ui.px(em * 7), height = ui.fill()})
+			ui.label(value)
+		}
+		ui.spacer(ui.px(em * 0.6))
+	}
+}
+
+// The biome in one letter, for the list of places.
+biome_letter :: proc(biome: u8) -> string {
+	switch engine.Biome(biome) {
+	case .Ocean:
+		return "~"
+	case .Ice:
+		return "*"
+	case .Tundra:
+		return "t"
+	case .Desert:
+		return "d"
+	case .Grass:
+		return "g"
+	case .Forest:
+		return "f"
+	case .Mountain:
+		return "^"
+	}
+	return "?"
 }
 
 // A chart of the ring, oldest first, in a box of its own.
@@ -466,7 +808,7 @@ chart :: proc(ring: []f64, n, next: int, accent: draw.Color, em: f32, id: string
 	d.values = values
 	d.n = n
 	d.accent = accent
-	ui.next({width = ui.fill(), height = ui.px(em * 4)})
+	ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
 	ui.custom(fmt.tprintf("chart-%s", id), chart_draw, d)
 }
 
@@ -480,7 +822,8 @@ viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: b
 	app := new(App)
 	defer free(app)
 	app.layer = .Land
-	w := engine.world_make({width = 64, height = 64, agents = int(agents), seed = seed})
+	app.zoom = 1
+	w := engine.world_make({width = 160, height = 96, agents = int(agents), seed = seed})
 	cells := w.width * w.height
 	app.snap.width, app.snap.height = w.width, w.height
 	sim_snapshot_make(&app.snap, cells)
@@ -490,9 +833,11 @@ viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: b
 	sim_start(&app.sim, w, int(steps_per_second))
 	defer sim_stop(&app.sim)
 
-	if !host.host_open(&app.main, &app.shared, {title = "agora", size = {1280, 820}, headless = headless}, build, app) { return 1 }
+	if !host.host_open(&app.main, &app.shared, {title = "agora", size = {1360, 900}, headless = headless}, build, app) { return 1 }
 	defer host.host_close(&app.main)
 	app.main.background = ui.theme_lookup(&app.shared.theme, {}, "background")
+	ui.use(&app.main.state)
+	app.main.state.icon_font = ui.lucide_icons()
 	platform.set_dark_title(app.main.win, true)
 	app.devtools = devtools.start_from_env(app.main.win, "agora")
 	defer devtools.stop(app.devtools)

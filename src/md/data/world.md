@@ -4,15 +4,17 @@
 
 | Column | Type | Meaning |
 |---|---|---|
-| `cell` | `[]u32` | the agent's cell, from 0 to width × height − 1 |
+| `cell` | `[]u32` | the agent's cell (always a land cell), from 0 to width × height − 1 |
 | `goods` | `[]i64` | what the agent holds, in centi-units (100 = one meal) |
 | `money` | `[]i64` | what the agent holds, in the money's smallest unit |
 | `hunger` | `[]u8` | 0 (fed) to 100 (starving) |
 | `health` | `[]u8` | 0 to 100 |
 | `skill` | `[]u8` | 50 to 150: what this person gets out of the land, in percent |
 
-The grid: one `Cell` per cell of `width × height`, with its `productivity` (200 to 1000 per thousand). The land is a river
-valley, a sine of the rows; it is the same for every seed, so that two seeds are comparable.
+The grid: one `Cell` per cell of `width × height` (160 × 96 by default), with its `productivity` (per thousand), its
+`elevation` (0 to 65535), its `biome` (ocean, ice, tundra, desert, grass, forest, mountain), its `temperature` and its
+`moisture`. The ground is the seed's, from fractal noise (`features/engine.md`, "The ground"). `land` lists the cells that
+can hold people, and `cell_pop` counts them, for migration's crowding.
 
 The markets: one per region of `REGION × REGION` (4×4) cells, with a `price` in money per unit, and the buyers and
 sellers of its last step. `market_start[m] ..< market_start[m+1]` are its agents in `order`.

@@ -3,14 +3,18 @@ package engine
 // The world: a grid of cells and the agents in it, in columns (structure of arrays). One step: sort the agents by market,
 // produce, state intentions, resolve each market, eat, then modulate and measure.
 
-import "core:math"
 import "core:mem"
 import "core:slice"
 import "base:intrinsics"
 
-// A cell of the grid: what the land gives to a healthy, skilled person (per thousand).
+// A cell of the grid: what the land gives to a healthy, skilled person (per thousand), its height, its biome, its
+// climate. Ocean and ice give nothing, and no one lives there.
 Cell :: struct {
 	productivity: u16,
+	elevation:    u16,
+	biome:        Biome,
+	temperature:  u8,
+	moisture:     u8,
 }
 
 // A market: the price of a good there, and how many buyers and sellers its last step had. A region of REGION × REGION
@@ -85,6 +89,9 @@ World :: struct {
 	order:       []u32,
 	cell_cursor: []u32,
 	intents:     []Intent,
+	// the land the people can stand on, and how many stand on each cell (the map's density, and migration's crowding)
+	land:     []u32,
+	cell_pop: []u32,
 	books:       Books,
 	measures:    Measures,
 	sensors:     Sensors,
@@ -104,6 +111,8 @@ EAT_PER_UNIT    :: 10     // hunger removed by one unit eaten
 HUNGER_PER_STEP :: 20     // hunger added by one step: about 2 units, near the average output
 SURPLUS         :: 3 * GOOD // goods an agent keeps before selling
 BUY_BELOW       :: 20     // an agent buys when its hunger is above this
+MIGRATE_EVERY   :: 4      // an agent's turn to move comes up every 4 steps
+MIGRATE_HUNGER  :: 40     // below this hunger, a person stays where it is
 STARVING        :: 70     // above this hunger, health falls
 WEALTH_BUCKETS  :: 64
 
@@ -137,18 +146,14 @@ world_make :: proc(o: World_Options) -> World {
 	w.agents.health = make([]u8, o.agents)
 	w.agents.skill = make([]u8, o.agents)
 
-	// The land: a river valley along a sine of the rows, fertile near it, poor on the hills. No randomness here: the
-	// seed shapes the people, not the ground, so that two seeds are comparable.
-	for y in 0 ..< o.height {
-		for x in 0 ..< o.width {
-			river := f64(o.height) * 0.5 + f64(o.height) * 0.22 * math.sin(f64(x) * 0.09)
-			distance := math.abs(f64(y) - river) / f64(o.height)
-			fertility := clamp(1.0 - distance * 1.4, 0.15, 1.0)
-			w.cells[y * o.width + x] = {productivity = u16(200 + fertility * 800)}
-		}
-	}
+	// The ground: continents and oceans, climates and biomes, all from the seed; then the markets, one per region, each
+	// at the price its land gives: poor land, dear food.
+	land := terrain_generate(w.cells, o.width, o.height, o.seed)
+	w.land = make([]u32, len(land))
+	copy(w.land, land[:])
+	delete(land)
+	assert(len(w.land) > 0, "the world has no land")
 
-	// The markets, one per region, each at the price its land gives: poor land, dear food.
 	w.markets_x = max(1, (o.width + REGION - 1) / REGION)
 	w.markets_y = max(1, (o.height + REGION - 1) / REGION)
 	w.markets = make([]Market, w.markets_x * w.markets_y)
@@ -163,16 +168,20 @@ world_make :: proc(o: World_Options) -> World {
 				}
 			}
 			productivity := n > 0 ? mean / n : 500
+			if productivity <= 0 { productivity = 200 } // (a region of open sea: a price nobody uses, but no division by zero)
 			w.markets[my * w.markets_x + mx] = {price = PRICE_BASE / i64(productivity)}
 		}
 	}
 
-	// The people: a cell, a small stock, some money, a little hunger, decent health, a skill. Each from the seed alone:
-	// the same seed founds the same world, and each field from its own stream (Rng_Key.use).
+	// The people: a cell of land, a small stock, some money, a little hunger, decent health, a skill. Each from the seed
+	// alone: the same seed founds the same world, and each field from its own stream (Rng_Key.use).
+	w.cell_pop = make([]u32, cells)
 	for a in 0 ..< o.agents {
 		k := Rng_Key{seed = o.seed, step = 0, agent = u32(a)}
 		k.use = .Home
-		w.agents.cell[a] = u32(rng_range(k, 0, i64(cells)))
+		at := rng_range(k, 0, i64(len(w.land)))
+		w.agents.cell[a] = w.land[at]
+		w.cell_pop[w.agents.cell[a]] += 1
 		k.use = .Goods
 		w.agents.goods[a] = rng_range(k, 2 * GOOD, 8 * GOOD)
 		k.use = .Money
@@ -190,6 +199,8 @@ world_make :: proc(o: World_Options) -> World {
 
 world_destroy :: proc(w: ^World) {
 	delete(w.cells, w.allocator)
+	delete(w.land, w.allocator)
+	delete(w.cell_pop, w.allocator)
 	delete(w.markets, w.allocator)
 	delete(w.market_start, w.allocator)
 	delete(w.order, w.allocator)
@@ -218,6 +229,7 @@ world_step :: proc(w: ^World) {
 	produce_and_intend(w)
 	resolve_markets(w)
 	eat_and_modulate(w)
+	migrate(w)
 	measure(w)
 	assert(books_balanced(w), "the books of the step do not balance")
 }
@@ -276,6 +288,40 @@ produce_and_intend :: proc(w: ^World) {
 			}
 		}
 	}
+}
+
+// A hungry person moves to the neighbouring land that holds fewer people for what it gives: the poorest land empties,
+// the river's banks fill. No draw: a fixed turn and a fixed order of the four neighbours keep the run deterministic.
+migrate :: proc(w: ^World) {
+	for a in 0 ..< w.agents.count {
+		if (a + int(w.step)) % MIGRATE_EVERY != 0 { continue }
+		if w.agents.hunger[a] < MIGRATE_HUNGER { continue }
+		c := w.agents.cell[a]
+		x, y := int(c) % w.width, int(c) / w.width
+		best := c
+		best_score := crowd_score(w, c)
+		neighbours := [4][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+		for d in neighbours {
+			nx, ny := x + d[0], y + d[1]
+			if nx < 0 || ny < 0 || nx >= w.width || ny >= w.height { continue }
+			nc := u32(ny * w.width + nx)
+			if w.cells[nc].productivity == 0 { continue }
+			if score := crowd_score(w, nc); score > best_score {
+				best_score, best = score, nc
+			}
+		}
+		if best != c {
+			w.cell_pop[c] -= 1
+			w.cell_pop[best] += 1
+			w.agents.cell[a] = best
+		}
+	}
+}
+
+// What a cell offers each person on it: its productivity, shared among the people already there.
+@(private)
+crowd_score :: proc(w: ^World, c: u32) -> i64 {
+	return i64(w.cells[c].productivity) * 1000 / i64(w.cell_pop[c] + 1)
 }
 
 // Each market: buyers and sellers met in their order, at the market's price, until one side runs out. Money and goods

@@ -19,20 +19,19 @@ costs no step.
 
 ## What the window shows
 
-- **The map**: one rectangle a cell, shaded by the layer chosen — **Land** (the river valley's fertility, the default),
-  People (density), Hunger (mean per cell), Wealth (money per person). The scale is twice the mean of the layer, except
-  hunger (against 60 of 100) and land (against 1000), so that a quiet world still reads.
-- **The counters**: money per person, goods in the world, mean hunger, the share starving, mean health, the Gini of
-  money, and the trades of the last step.
-- **The charts**: the goods in the world, the mean hunger and the Gini, one point every ten steps, in a ring of 360 (two
-  minutes at 30 steps a second).
-- **The controls**: Pause/Play and the rate; the layer's buttons; the title says the step and the number of people.
-
-## The look
-
-The window wears the toolkit's own theme and finish: `ui.theme_show` with `Midnight` and `.Machined`, as every program
-of the toolkit does, and `host` draws the frame. No colour of the interface is written in agora: only the data colours of
-the map and the charts are, and they mean the data.
+- **The map**: the ground drawn from its biome, its sea's depth and the slope's light (a west face is bright, an east face
+  dark), then the layer chosen laid over it as a tint: **Land** (the ground, the default), People (density), Hunger (mean
+  per cell), Wealth (money per person). The scale is twice the mean of the layer, except hunger (against 60 of 100). The
+  biggest places are dots on it. Zoom and pan: the two zoom buttons, the whole-world button and the four arrows; a cell is
+  a rectangle of the view, so the map never leaves empty room.
+- **The header**: the mark, the step, the people and the goods; Pause/Play; the rate as a segmented control (×1, ×10,
+  ×30, ×120).
+- **The panels**: *The world* (people, hunger, starving, Gini as figures; trades, goods, money per person and health as
+  lines), *The biggest places* (the six most populated cells, with their biome, people, a hunger bar and their market's
+  price), and *Over time* (three charts, each with its value now). The panels' column scrolls when the window is short.
+- **The look**: the toolkit's theme and finish (`Midnight`, `.Machined`), its cards, its segmented controls and its Lucide
+  icons. No colour of the interface is written in agora: only the data colours of the map, the charts and the biome dots
+  are, and they mean the data.
 
 ## Not there yet
 

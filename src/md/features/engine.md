@@ -12,6 +12,7 @@ world_step
   produce_and_intend   each person works its land, writes what it wants: sell its surplus, or buy food
   resolve_markets      each market meets its buyers and sellers in order, at its price
   eat_and_modulate     each person eats, its hunger grows, its health follows
+  migrate              a hungry person moves to the neighbouring land that holds fewer for what it gives
   measure              the aggregates and the histogram, the books' totals, then the sensors due
 ```
 
@@ -31,6 +32,16 @@ Each phase reads the state at t and writes the state at t+1; a phase never reads
   seeds for 400 steps and fails on the first step whose books do not balance.
 - A future task system must keep this: the partition into blocks may change nothing, because no draw and no write
   depends on the order the blocks run in. That test does not exist yet (see ROADMAP).
+
+## The ground
+
+The land comes from the seed alone (`src/engine/terrain.odin`): fractal value noise for the continents, stretched between
+its own lowest and highest point (fractal noise stays near its mean; a fixed sea level over it drowns the world), a
+falloff toward the edges for a sea all around, a temperature by latitude, a moisture from another noise, and a biome from
+both: ocean, ice, tundra, desert, grass, forest, mountain. Land next to the sea is richer (fish, harbours). The people
+stand only on land, and their cells are where migration moves them.
+
+The books do not see migration: a person who moves takes goods and money with it.
 
 ## The books
 
