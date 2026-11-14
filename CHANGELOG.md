@@ -3,6 +3,11 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-14
+
+### Added
+- **A world you can walk into**: the wheel zooms and a drag moves the map; a click chooses a place, another the person shown there. Cities are named, their people drawn as dots when the view is close, and the panels say what the ground gives, who starves and what the market asks. The engine answers the window with the chosen cell's people, and the map's layers, the pause, the rate and the zoom sit in one bar.
+
 ## [0.4.0] - 2026-11-14
 
 ### Added
@@ -23,6 +28,7 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.5.0]: https://github.com/sachahjkl/agora/releases/tag/v0.5.0
 [0.4.0]: https://github.com/sachahjkl/agora/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sachahjkl/agora/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sachahjkl/agora/releases/tag/v0.2.0
