@@ -3,6 +3,11 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-14
+
+### Added
+- **A world, and the window over it**: continents, oceans, ice, deserts and mountains from the seed; hungry people move to better land as the world runs; and the window gains a framed map with zoom and pan, the figures of the world, the biggest places with their hunger, and charts with their values, in the toolkit's cards and icons. `agoratool shot` takes its picture with no window of the system.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
@@ -18,6 +23,7 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.4.0]: https://github.com/sachahjkl/agora/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sachahjkl/agora/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sachahjkl/agora/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sachahjkl/agora/releases/tag/v0.1.0
