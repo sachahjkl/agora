@@ -2,16 +2,20 @@ package agoratool
 
 // logo: agora's mark, drawn by the toolkit's paint package (the same bytes on every system). A world seen from above: a
 // dark disc, and in it three groups of people, gold, teal and coral, each tied together by its own links, with fewer and
-// fainter links between the groups. Sizes up to 32 px draw one dot per group and the links between them (detail_for), so the
-// mark still reads at 16 px.
-// assets/logo.png (1024 px), the sizes the program, its desktop entry and the site embed, .project/image.png and
-// site/img/logo.png.
+// fainter links between the groups. Sizes up to 32 px draw one dot per group (detail_for), so the mark still reads at
+// 16 px. The files are the toolkit's (toolbox.write_logo, docs/toolbox.md, "A program's logo"); the sharing card is
+// `agoratool card`, drawn here rather than by gt:site's draw_card, which needs a browser.
 
 import "core:fmt"
+import "core:os"
 import paint "gt:paint"
 import toolbox "gt:toolbox"
 
+LOGO_DIR    :: "assets"
 LOGO_MASTER :: 1024
+LOGO_SIZES  := [?]int{16, 24, 32, 48, 64, 128, 256, 512}
+// The site's copy of the logo, and its size.
+SITE_LOGOS := [?]toolbox.Logo_File{{path = "site/img/logo.png", size = 256}}
 // The drawing's own units: a square of LOGO_UNITS, scaled to the canvas.
 LOGO_UNITS  :: 512.0
 // Small sizes are drawn from a master this many times larger, in one step of the cubic filter at most this factor.
@@ -55,6 +59,17 @@ SMALL_PEOPLE :: [3][2]f32{{256, 150}, {150, 344}, {362, 344}}
 
 // 1: every person and link (48 px and up); 0: one dot per group (16 to 32).
 detail_for :: proc(size: int) -> int { return size <= 32 ? 0 : 1 }
+
+logo :: proc() -> toolbox.Logo {
+	return {
+		render = logo_render,
+		dir = LOGO_DIR,
+		master = LOGO_MASTER,
+		sizes = LOGO_SIZES[:],
+		project_image = true,
+		files = SITE_LOGOS[:],
+	}
+}
 
 @(private = "file")
 circle :: proc(p: ^paint.Path, cx, cy, r: f32) { paint.ellipse(p, cx - r, cy - r, r * 2, r * 2) }
@@ -149,40 +164,16 @@ logo_render :: proc(size: int, user: rawptr) -> paint.Canvas {
 	return c
 }
 
-SITE_LOGO      :: "site/img/logo.png"
-SITE_LOGO_SIZE :: 256
+// `agoratool card`: the sharing card (SITE_META.card), the mark on the site's night, with the groups' colours spread
+// faintly behind it. Drawn here: no browser, the same bytes on every system.
+CARD_PATH       :: "site/img/card.png"
+CARD_W          :: 1200
+CARD_H          :: 630
+CARD_BACKGROUND :: 0x0B0D1C
+CARD_MARK       :: 440
 
-// What the logo command writes besides the card; the project's picture is what the repository and opencode's sessions of
-// it show.
-logo :: proc() -> toolbox.Logo {
-	return {
-		render = logo_render, dir = "assets", master = LOGO_MASTER, sizes = LOGO_SIZES[:], project_image = true,
-		files = LOGO_FILES[:],
-	}
-}
-
-@(rodata)
-LOGO_SIZES := [?]int{16, 24, 32, 48, 64, 128, 256, 512}
-
-@(rodata)
-LOGO_FILES := [?]toolbox.Logo_File{{SITE_LOGO, SITE_LOGO_SIZE}}
-
-// Not toolbox.logo_command: the sharing card is drawn with the mark, by the same command.
-run_logo :: proc(args: []string) -> int {
-	if why := toolbox.write_logo(logo()); why != "" { return toolbox.done(why) }
-	return toolbox.done(write_card())
-}
-
-// The sharing card (SITE_META.card): the mark on the site's night, with the groups' colours spread faintly behind it.
-// Drawn here rather than by gt:site's draw_card: no browser, the same bytes on every system.
-SITE_CARD        :: "site/img/card.png"
-CARD_W           :: 1200
-CARD_H           :: 630
-CARD_BACKGROUND  :: 0x0B0D1C
-CARD_MARK        :: 440
-
-@(private = "file")
-write_card :: proc() -> (why: string) {
+run_card :: proc(args: []string) -> int {
+	if len(args) > 0 { fmt.eprintln("card takes no argument"); return toolbox.EXIT_USAGE }
 	c := paint.canvas_make(CARD_W, CARD_H)
 	defer paint.canvas_destroy(&c)
 	whole: paint.Path
@@ -190,10 +181,14 @@ write_card :: proc() -> (why: string) {
 	paint.rect(&whole, 0, 0, CARD_W, CARD_H)
 	paint.fill(&c, whole, paint.solid(paint.hex(CARD_BACKGROUND)))
 	// a glow of each group's colour, far apart: the world they live in
-	glows := [3]struct{ x, y: f32, colour: u32 }{{240, 140, GOLD}, {170, 560, TEAL}, {1040, 470, CORAL}}
+	glows := [3]struct {
+		x, y: f32,
+		colour: u32,
+	}{{240, 140, GOLD}, {170, 560, TEAL}, {1040, 470, CORAL}}
 	for g in glows { paint.fill(&c, whole, paint.radial({g.x, g.y}, 520, paint.hex(g.colour, 60), paint.hex(g.colour, 0))) }
 	logo_paint(&c, (CARD_W - CARD_MARK) / 2, (CARD_H - CARD_MARK) / 2, CARD_MARK, 1)
-	if !paint.write_png(c, SITE_CARD) { return fmt.tprintf("%s cannot be written", SITE_CARD) }
-	fmt.printfln("wrote %s", SITE_CARD)
-	return ""
+	_ = os.make_directory_all("site/img")
+	if !paint.write_png(c, CARD_PATH) { fmt.eprintfln("agoratool: %s cannot be written", CARD_PATH); return toolbox.EXIT_FAILED }
+	fmt.printfln("wrote %s", CARD_PATH)
+	return toolbox.EXIT_DONE
 }

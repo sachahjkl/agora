@@ -1,4 +1,4 @@
-# Design
+# Simulation: the model
 
 agora simulates a world of autonomous agents in real time. The agents produce, trade, form groups, draw borders and go
 to war. Sensors measure what emerges, and a viewer shows the measures live.

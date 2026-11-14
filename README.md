@@ -9,34 +9,36 @@ acts from a few motivations: subsistence, security, belonging, status. Their hea
 they decide. Nothing else is written in: tribalism, prejudice, business cycles, states and wars emerge, or do not, from
 these rules.
 
-The world runs in real time. You place sensors on it, on a region, a group or one person, and watch their measures live:
-output, inequality, trust between groups, fear, epidemics, borders, fronts.
+The engine runs headless and in real time; sensors measure what emerges; a viewer, in progress, shows the measures live
+and never touches the world.
 
-**Status: design.** No version is published yet. The design and its build order are in [docs/design.md](docs/design.md).
+## What runs today (0.2.0)
 
-## What it will do
-
-- **A world in real time**: the target is one million agents at about 30 steps per second, on the processor, with SIMD.
-- **Motivations, not scripts**: each agent weighs its needs, learns whom to trust, and decides by deliberation or by
-  instinct. Stress moves it towards instinct.
-- **Modulators**: health, disease, hunger, fatigue, fear, trauma, wealth, education and rights change how an agent
-  decides, through one table of effects.
-- **Groups and borders**: abstract markers, learned trust, groups with leaders, states, borders, war and conquest.
-- **Sensors**: scalar, distribution, map, matrix, flow, event and probe; attached live, and free for the simulation:
-  a run with sensors and a run without them end in the same state.
-- **Replay**: the same seed gives the same world, byte for byte, whatever the number of threads; go back to any step.
+- **A deterministic world**: a seed founds the people, and the same seed gives the same run, byte for byte. Randomness is
+  a pure function of (seed, step, agent, use), with no shared state.
+- **People in columns**: cell, goods, money, hunger, health, skill, in structure-of-arrays; the step visits them five
+  times, and the books of every step balance to the unit (`goods_end == goods_start + produced - consumed`, and money is
+  only ever moved).
+- **Markets by region**: a 4×4 cells market sets a price from its land and moves it with scarcity; buyers and sellers meet
+  in a fixed order, and a person sells its surplus or buys food, never both in one step.
+- **Sensors**: totals, means and an exact Gini, taken at their own rates and kept in rings; a run with sensors and a run
+  without them end in the same state.
+- **One command**: `agora run --agents:1000000 --steps:1000 --seed:1` prints the world as it runs, and its steps per
+  second (about 30 at a million people, on the processor).
 
 ## Build
-
-The program is written in [Odin](https://odin-lang.org) on [gui_toolkit](https://github.com/sachahjkl/gui_toolkit), for
-Linux first. See [docs/development.md](docs/development.md).
 
 ```sh
 git clone --recurse-submodules https://github.com/sachahjkl/agora
 cd agora
 nix develop
 ./build.sh
+./build/agora run --agents:20000 --steps:300
 ```
+
+The program is written in [Odin](https://odin-lang.org) on [gui_toolkit](https://github.com/sachahjkl/gui_toolkit).
+[docs/development.md](docs/development.md) has the tool (`agoratool`), the tests and the checks; the design and its
+decisions are in [src/md](src/md/README.md).
 
 ## Licence
 
