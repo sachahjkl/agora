@@ -3,6 +3,11 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-14
+
+### Added
+- **The window over the world**: the world now runs beside a window, in a thread, at 1 to 120 steps a second; the map shows the land, the people, the hunger or the wealth of every cell, with the counters and three charts from the sensors, and the window never touches the world. `agoratool shot` takes its picture with no window of the system.
+
 ## [0.2.0] - 2026-11-14
 
 ### Added
@@ -13,5 +18,6 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.3.0]: https://github.com/sachahjkl/agora/releases/tag/v0.3.0
 [0.2.0]: https://github.com/sachahjkl/agora/releases/tag/v0.2.0
 [0.1.0]: https://github.com/sachahjkl/agora/releases/tag/v0.1.0
