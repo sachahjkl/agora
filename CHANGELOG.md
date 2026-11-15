@@ -3,6 +3,11 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.5.1] - 2026-11-15
+
+### Fixed
+- **Two copies open at once no longer hide each other's crash**: when two copies of Agora ran at the same time, a crash or a forced end of one could go unreported, and its report could be hidden by the clean end of the other. Each copy now keeps its own trace, and the next start shows what it did not see.
+
 ## [0.5.0] - 2026-11-14
 
 ### Added
@@ -28,6 +33,7 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.5.1]: https://github.com/sachahjkl/agora/releases/tag/v0.5.1
 [0.5.0]: https://github.com/sachahjkl/agora/releases/tag/v0.5.0
 [0.4.0]: https://github.com/sachahjkl/agora/releases/tag/v0.4.0
 [0.3.0]: https://github.com/sachahjkl/agora/releases/tag/v0.3.0

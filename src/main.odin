@@ -14,7 +14,7 @@ import "core:time"
 import engine "engine"
 
 APP_NAME    :: "agora"
-APP_VERSION :: "0.5.0"
+APP_VERSION :: "0.5.1"
 
 Options :: struct {
 	agents:     int,
