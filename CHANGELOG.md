@@ -3,6 +3,19 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-16
+
+### Added
+- **A Windows version**: each release now has a Windows archive (`agora-<version>-windows-x64.zip`) beside the Linux one, and the site's download button offers both.
+- **A new world from the window**: the bar's *New world* button opens a dialog that founds another world from a seed and a number of people (50 thousand to a million). The same seed always founds the same world.
+- **Villages and towns on the map**: zoom in and the settled places show their houses, then their streets, a house for each household, and the people of the chosen place walking there, redder as they are hungrier. The country around keeps a farm here and there. The zoom now goes to ×24.
+
+### Changed
+- **The window is redone**: the map stays inside its frame and shows the whole world with no dark band; its layers and its zoom are a row above it, with an overview of the world once the view is close. The sidebar's four tabs fit their panel: a place's figures and its people with their hunger as bars, the world's figures and who lives on which ground, the news with a colour for each kind, and four charts.
+
+### Fixed
+- **The news no longer repeats itself**: a place whose hunger stays near the famine line is one famine, not a famine and a relief at every step; a relief and an exodus are news too, and a click on a line goes to its place. The list of the biggest places names distinct places, not the neighbours of one town.
+
 ## [0.6.0] - 2026-11-16
 
 ### Added
@@ -38,6 +51,7 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.7.0]: https://github.com/sachahjkl/agora/releases/tag/v0.7.0
 [0.6.0]: https://github.com/sachahjkl/agora/releases/tag/v0.6.0
 [0.5.1]: https://github.com/sachahjkl/agora/releases/tag/v0.5.1
 [0.5.0]: https://github.com/sachahjkl/agora/releases/tag/v0.5.0
