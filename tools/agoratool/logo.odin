@@ -14,6 +14,9 @@ import toolbox "gt:toolbox"
 LOGO_DIR    :: "assets"
 LOGO_MASTER :: 1024
 LOGO_SIZES  := [?]int{16, 24, 32, 48, 64, 128, 256, 512}
+// The sizes of the .ico of agora.exe (Explorer's lists and tiles, the taskbar, the window's corner, at every scale).
+ICO_SIZES := [?]int{16, 20, 24, 32, 40, 48, 64, 96, 128, 256}
+ICO_FILE  :: "assets/agora.ico"
 // The site's copy of the logo, and its size.
 SITE_LOGOS := [?]toolbox.Logo_File{{path = "site/img/logo.png", size = 256}}
 // The drawing's own units: a square of LOGO_UNITS, scaled to the canvas.
@@ -66,6 +69,7 @@ logo :: proc() -> toolbox.Logo {
 		dir = LOGO_DIR,
 		master = LOGO_MASTER,
 		sizes = LOGO_SIZES[:],
+		ico = ICO_FILE, ico_sizes = ICO_SIZES[:],
 		project_image = true,
 		files = SITE_LOGOS[:],
 	}
