@@ -3,6 +3,11 @@
 All notable changes to agora are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [semantic versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-16
+
+### Added
+- **An application, not a sketch**: a bar carries the world's state, the layers, the zoom and the clock; the sidebar has four tabs (Place, World, News, Charts); a foot says what the pointer does; the map has its legend. The world writes its news as it runs: a famine that starts, a place that fills with newcomers.
+
 ## [0.5.1] - 2026-11-15
 
 ### Fixed
@@ -33,6 +38,7 @@ and the versions follow [semantic versioning](https://semver.org/).
 ### Added
 - **The design and the first skeleton**: the design of the simulation (motivations, modulators, groups and borders, sensors, the real-time engine and its build order), the logo and the site. The program only prints its version for now.
 
+[0.6.0]: https://github.com/sachahjkl/agora/releases/tag/v0.6.0
 [0.5.1]: https://github.com/sachahjkl/agora/releases/tag/v0.5.1
 [0.5.0]: https://github.com/sachahjkl/agora/releases/tag/v0.5.0
 [0.4.0]: https://github.com/sachahjkl/agora/releases/tag/v0.4.0
