@@ -16,6 +16,31 @@ permissions:
   contents: read
 
 jobs:
+  # Windows: the same checks (odin check -vet, the tests, a release build).
+  windows:
+    name: Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./ext/gui_toolkit/.github/actions/setup-odin
+      - name: agoratool check
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          odin build tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool.exe -vet
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          build/agoratool.exe check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agora-windows-x64-${{ github.sha }}
+          path: build/agora.exe
+          if-no-files-found: warn
+
   linux:
     # the flake's development shell (nix develop), as on a developer's machine: Odin and cargo from the NixOS cache
     name: Linux x64

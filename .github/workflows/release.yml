@@ -1,8 +1,9 @@
 name: Release
 
-# A version tag vX.Y.Z (agoratool ship makes it) builds agora and publishes it: the Linux archive with its SHA-256, on a
-# GitHub release whose notes are the changelog's section of that version. The tag must be APP_VERSION's (agoratool
-# package checks).
+# A version tag vX.Y.Z (agoratool ship makes it) builds agora and publishes it: the Linux and the Windows archives, each
+# with its SHA-256, on a GitHub release whose notes are the changelog's section of that version. The Linux job makes the
+# release as a draft; the Windows job adds its files and publishes it. The tag must be APP_VERSION's (agoratool package
+# checks).
 on:
   push:
     tags: ['v*']
@@ -47,5 +48,34 @@ jobs:
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             gh release upload "${{ github.ref_name }}" build/dist/* --clobber
           else
-            gh release create "${{ github.ref_name }}" build/dist/* --title "agora ${GITHUB_REF_NAME#v}" --notes-file build/notes.md
+            gh release create "${{ github.ref_name }}" build/dist/* --draft --title "agora ${GITHUB_REF_NAME#v}" --notes-file build/notes.md
           fi
+
+  windows:
+    needs: release
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ./ext/gui_toolkit/.github/actions/setup-odin
+      - name: Build, test, package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          odin build tools/agoratool -collection:gt=ext/gui_toolkit/src -out:build/agoratool.exe -vet
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          build/agoratool.exe check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          build/agoratool.exe package ${{ github.ref_name }}
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" (Get-ChildItem build/dist/*).FullName --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # (public once both systems' files are there: a download link of the site never points at a missing file)
+          gh release edit "${{ github.ref_name }}" --draft=false --latest

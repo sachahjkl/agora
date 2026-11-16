@@ -30,13 +30,14 @@ SITE_META :: tk_site.Meta{
 
 SITE_LD := [?][2]string{
 	{"applicationCategory", "SimulationApplication"},
-	{"operatingSystem", "Linux"},
+	{"operatingSystem", "Windows, Linux"},
 	{"license", "https://opensource.org/license/mit"},
 }
 
-// The home page's download: the one system the release builds for.
+// The home page's downloads: the systems the release builds for.
 @(rodata)
 SITE_DOWNLOADS := [?]tk_site.Download{
+	{os = "windows", label = "Windows", href = "https://github.com/sachahjkl/agora/releases/download/v{{version}}/agora-{{version}}-windows-x64.zip", detail = "v{{version}} · Windows 10 / 11 · x64 · .zip"},
 	{os = "linux", label = "Linux", href = "https://github.com/sachahjkl/agora/releases/download/v{{version}}/agora-{{version}}-linux-x64.tar.gz", detail = "v{{version}} · x64 · .tar.gz"},
 }
 

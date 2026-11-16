@@ -18,7 +18,7 @@ REPOSITORY :: "https://github.com/sachahjkl/agora"
 project :: proc() -> toolbox.Project {
 	return {
 		name = "agora", repository = REPOSITORY, changelog = "CHANGELOG.md",
-		version_file = "src/main.odin", version_line = "APP_VERSION :: ", program = "build/agora",
+		version_file = "src/main.odin", version_line = "APP_VERSION :: ", program = PROGRAM,
 		title = "Agora",
 		description = "A world of autonomous people, simulated in real time and watched through sensors.",
 		publisher = "Froment Software", copyright = "Copyright (c) 2026 sachahjkl",
