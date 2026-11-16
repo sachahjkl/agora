@@ -33,6 +33,7 @@ Layer :: enum {
 
 LAYER_LABELS := [4]string{"Land", "People", "Hunger", "Wealth"}
 RATE_LABELS := [4]string{"×1", "×10", "×30", "×120"}
+SIDE_LABELS := [4]string{"Place", "World", "News", "Charts"}
 
 // The rate the world runs at now (for the segmented control).
 current_rate :: proc(sim: ^Sim) -> int {
@@ -78,9 +79,27 @@ Snapshot :: struct {
 	probe_cell: u32,
 	probe:      [PROBE_SLOTS]engine.Probe,
 	probe_n:    int,
+	// the world's news, newest last in the ring
+	events:      [EVENT_SLOTS]Event,
+	events_n:    int,
+	events_next: int,
 }
 
 PROBE_SLOTS :: 24
+EVENT_SLOTS :: 24
+
+// One line of the world's news: a famine, a rush of newcomers. A fixed buffer, so that the engine thread and the window
+// never share an allocation.
+Event :: struct {
+	step: u64,
+	text: [72]u8,
+	len:  int,
+}
+
+// One line of the world's news, cut to the event's buffer.
+Event_Text :: struct {
+	text: string,
+}
 
 CITY_SLOTS :: 6
 
@@ -127,8 +146,27 @@ Sim :: struct {
 	work:    Snapshot, // what the thread fills, then publishes
 	// the cell the window wants the people of, or -1
 	want_cell: int,
+	// the news: the ring, and the state of the last step, to see a famine or a rush start
+	events:      [EVENT_SLOTS]Event,
+	events_n:    int,
+	events_next: int,
+	prev_hunger: []u32,
+	prev_people: []u32,
+	prev_valid:  bool,
 	elapsed: time.Duration,
 }
+
+// One event into the ring, its text cut to the event's buffer.
+event_push :: proc(sim: ^Sim, step: u64, format: string, args: ..any) {
+	e := &sim.events[sim.events_next]
+	e.step = step
+	written := fmt.bprintf(e.text[:], format, ..args)
+	e.len = clamp(len(written), 0, len(e.text))
+	sim.events_next = (sim.events_next + 1) % EVENT_SLOTS
+	sim.events_n = min(sim.events_n + 1, EVENT_SLOTS)
+}
+
+event_text :: proc(e: ^Event) -> string { return string(e.text[:e.len]) }
 
 sim_start :: proc(sim: ^Sim, w: engine.World, rate: int) {
 	sim.world = w
@@ -143,6 +181,8 @@ sim_start :: proc(sim: ^Sim, w: engine.World, rate: int) {
 	sim.work.width, sim.work.height = w.width, w.height
 	sim.pub.prices = make([]i64, len(w.markets))
 	sim.work.prices = make([]i64, len(w.markets))
+	sim.prev_hunger = make([]u32, cells)
+	sim.prev_people = make([]u32, cells)
 	// the first picture is the world as founded
 	sim_publish(sim)
 	sim.thread = thread.create_and_start_with_data(sim, sim_run, name = "engine")
@@ -159,6 +199,8 @@ sim_stop :: proc(sim: ^Sim) {
 	}
 	sim_snapshot_destroy(&sim.pub)
 	sim_snapshot_destroy(&sim.work)
+	delete(sim.prev_hunger)
+	delete(sim.prev_people)
 	engine.world_destroy(&sim.world)
 }
 
@@ -225,6 +267,32 @@ sim_publish :: proc(sim: ^Sim) {
 		}
 		sim.work.price_mean = count > 0 ? sum / count : 0
 	}
+	// the news: a famine that starts, a place that fills with newcomers
+	if sim.prev_valid {
+		famine, famine_at := -1, 0.0
+		grown, grown_by := -1, 0
+		for c in 0 ..< len(w.cells) {
+			people := sim.work.people[c]
+			if people < 25 { continue }
+			before := f64(sim.prev_hunger[c]) / f64(max(1, sim.prev_people[c]))
+			now := f64(sim.work.hunger[c]) / f64(people)
+			if before < 70 && now >= 70 && now > famine_at {
+				famine_at, famine = now, c
+			}
+			if d := int(people) - int(sim.prev_people[c]); d > grown_by {
+				grown_by, grown = d, c
+			}
+		}
+		if famine >= 0 {
+			event_push(sim, w.step, "%s: a famine (%.0f hungry)", city_name(famine % w.width, famine / w.width, sim.work.biome[famine]), famine_at)
+		}
+		if grown >= 0 && grown_by >= 20 {
+			event_push(sim, w.step, "%s: %d newcomers", city_name(grown % w.width, grown / w.width, sim.work.biome[grown]), grown_by)
+		}
+	}
+	copy(sim.prev_hunger, sim.work.hunger)
+	copy(sim.prev_people, sim.work.people)
+	sim.prev_valid = true
 	// the chosen cell's people, asked for by the window
 	sync.mutex_lock(&sim.mu)
 	want := sim.want_cell
@@ -268,6 +336,7 @@ sim_publish :: proc(sim: ^Sim) {
 	sim.pub.series_gini = sim.work.series_gini
 	sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean = sim.work.cities, sim.work.cities_n, sim.work.price_mean
 	sim.pub.probe_cell, sim.pub.probe, sim.pub.probe_n = sim.work.probe_cell, sim.work.probe, sim.work.probe_n
+	sim.pub.events, sim.pub.events_n, sim.pub.events_next = sim.events, sim.events_n, sim.events_next
 	copy(sim.pub.people, sim.work.people)
 	copy(sim.pub.hunger, sim.work.hunger)
 	copy(sim.pub.money, sim.work.money)
@@ -291,6 +360,7 @@ sim_copy :: proc(sim: ^Sim, out: ^Snapshot) {
 	out.series_hunger, out.series_gini = sim.pub.series_hunger, sim.pub.series_gini
 	out.cities, out.cities_n, out.price_mean = sim.pub.cities, sim.pub.cities_n, sim.pub.price_mean
 	out.probe_cell, out.probe, out.probe_n = sim.pub.probe_cell, sim.pub.probe, sim.pub.probe_n
+	out.events, out.events_n, out.events_next = sim.pub.events, sim.pub.events_n, sim.pub.events_next
 	copy(out.people, sim.pub.people)
 	copy(out.hunger, sim.pub.hunger)
 	copy(out.money, sim.pub.money)
@@ -338,6 +408,7 @@ App :: struct {
 	selected_person: int,
 	hover_cell:      int,
 	dragged:         bool,
+	side:            int,
 	drag_cx, drag_cy: f32,
 	devtools: ^devtools.Server,
 	shown:    ui.Theme_Shown,
@@ -466,6 +537,30 @@ map_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 		}
 	}
 	draw.rect(dc, r, {}, 0, 1, 1, ui.color("window border"))
+
+	// the legend, over the map's lower left: the layer's name, and the scale's two ends
+	if d.font != 0 {
+		pad: f32 = 8
+		box := draw.Rect{{r.min.x + 10, r.max.y - 46}, {r.min.x + 10 + 190, r.max.y - 10}}
+		draw.rect(dc, box, draw.hex(0x0B0D1CEE), 6, 1, 1, draw.hex(0xFFFFFF22))
+		draw.text(dc, d.font, max(10, d.font_size * 0.85), {box.min.x + pad, box.min.y + 4}, draw.hex(0xECEFF5FF), LAYER_LABELS[int(d.layer)])
+		bar := draw.Rect{{box.min.x + pad, box.max.y - 18}, {box.max.x - pad, box.max.y - 10}}
+		for i in 0 ..< 24 {
+			t0 := f32(i) / 24
+			gx0 := bar.min.x + (bar.max.x - bar.min.x) * t0
+			gx1 := bar.min.x + (bar.max.x - bar.min.x) * f32(i + 1) / 24
+			c := d.layer == .Land ? ground_legend(t0) : layer_colour(d.layer, t0)
+			draw.rect(dc, {{gx0, bar.min.y}, {gx1 + 0.5, bar.max.y}}, c)
+		}
+	}
+}
+
+// The ground's colours along the legend: the sea's deep, the coast, the grass, the hills, the snow.
+ground_legend :: proc(t: f32) -> draw.Color {
+	if t < 0.5 { return draw.mix(draw.hex(0x0B1A2EFF), draw.hex(0x1F506EFF), t * 2) }
+	if t < 0.6 { return draw.hex(0xE4EBF0FF) }
+	if t < 0.75 { return draw.mix(draw.hex(0x8FA659FF), draw.hex(0x3F6B3AFF), (t - 0.6) / 0.15) }
+	return draw.mix(draw.hex(0x8A8578FF), draw.hex(0xE4EBF0FF), (t - 0.75) / 0.25)
 }
 
 // A place's name, made from where it is: the same cell always has the same name.
@@ -616,8 +711,10 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.column() {
-		// the bar: the name and the world's state, then pause and the rate
-		ui.next({width = ui.fill(), height = ui.px(em * 3.6)})
+		// the bar: the name, the world's state, the layers and the world's clock, on a surface of its own
+		ui.next({width = ui.fill(), height = ui.px(em * 3.8)})
+		bar := ui.build_box({.Draw_Background, .Draw_Border}, "topbar")
+		if ui.parent(bar) {
 		if ui.row(.Center) {
 			ui.spacer(ui.px(em * 0.9))
 			ui.next({width = ui.px(em * 2), height = ui.fill(), font = icons, text_align = .Center, fg = ui.color("accent")})
@@ -646,6 +743,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 			ui.next({width = ui.px(em * 21)})
 			if ui.segmented("rates", RATE_LABELS[:], &rate_now) { sim_set(&app.sim, rate = rates[rate_now]) }
 			ui.spacer(ui.px(em * 0.9))
+		}
 		}
 
 		ui.spacer(ui.px(em * 0.4))
@@ -693,6 +791,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 						if sig.clicked && !app.dragged && app.hover_cell >= 0 {
 							app.selected_cell = app.hover_cell
 							app.selected_person = -1
+							app.side = 0
 							sim_choose(&app.sim, app.selected_cell)
 						}
 						if sig.double_clicked && app.hover_cell >= 0 {
@@ -708,78 +807,52 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 				}
 			}
 
-			// the panels: the figures, the places, the charts; the column scrolls when the window is short
+			// the sidebar: one tab at a time, so that each fact has one place
 			ui.next({width = ui.px(em * 27), height = ui.fill()})
 			if ui.column(flags = {.View_Scroll_Y, .Clip}, id = "###panels") {
 				ui.spacer(ui.px(em * 0.7))
-				if ui.card("The world", lucide.ACTIVITY) {
-					ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
-					ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
-					if ui.row() {
-						ui.next({width = ui.fill(), height = ui.fill()})
-						if ui.column() { tile("People", compact(f64(s.agents)), "of the world") }
-						ui.next({width = ui.fill(), height = ui.fill()})
-						if ui.column() { tile("Hunger", fmt.tprintf("%.1f", s.mean_hunger), "of a hundred") }
-					}
-					ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
-					if ui.row() {
-						ui.next({width = ui.fill(), height = ui.fill()})
-						if ui.column() { tile("Starving", fmt.tprintf("%.1f%%", s.starving), "above 70") }
-						ui.next({width = ui.fill(), height = ui.fill()})
-						if ui.column() { tile("Gini", fmt.tprintf("%.3f", s.gini), "of money") }
-					}
-					ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
-					ui.hline(ui.fill())
-					fact("Trades in the last step", fmt.tprintf("%d", s.trades))
-					fact("Goods in the world", compact(total_goods(s)))
-					fact("Money per person", compact(mean_money(s)))
-					fact("Health", fmt.tprintf("%.1f", s.mean_health))
+				ui.next({width = ui.fill(), height = ui.px(em * 2.8)})
+				if ui.row(.Center) {
+					ui.spacer(ui.px(em * 0.7))
+					ui.next({width = ui.px(em * 25.5)})
+					if ui.segmented("side", SIDE_LABELS[:], &app.side) {}
+					ui.spacer(ui.px(em * 0.7))
 				}
+				ui.spacer(ui.px(em * 0.6))
 
-				ui.spacer(ui.px(em * 0.8))
-				if ui.card("The biggest places", lucide.BUILDING_2) {
-					table_head(em, "place", "people", "hunger", "price")
-					ui.hline(ui.fill())
-					for i in 0 ..< s.cities_n {
-						city := s.cities[i]
-						table_row(em, city)
-					}
-				}
-
-				ui.spacer(ui.px(em * 0.8))
-				if ui.card("The chosen place", lucide.MAP_PIN) {
-					if app.selected_cell < 0 {
-						ui.label("Click a cell of the map.")
-					} else {
-						cell := app.selected_cell
-						x, y := cell % s.width, cell / s.width
-						people := s.people[cell]
-						hunger := people > 0 ? f64(s.hunger[cell]) / f64(people) : 0
-						fact("Name", city_name(x, y, s.biome[cell]))
-						fact("Ground", biome_name(s.biome[cell]))
-						fact("At", fmt.tprintf("%d, %d", x, y))
-						fact("People", fmt.tprintf("%d", people))
-						fact("Hunger", fmt.tprintf("%.1f", hunger))
-						fact("Price", fmt.tprintf("%d", market_price(s, cell)))
-						if s.probe_n > 0 {
-							ui.spacer(ui.px(em * 0.4))
-							ui.hline(ui.fill())
-							ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
-							ui.label("  The people here")
-							count := min(s.probe_n, 6)
-							for i in 0 ..< count {
-								p := s.probe[i]
-								label := fmt.tprintf("#%d  %s  hunger %.0f", p.id, compact(f64(p.money)), f64(p.hunger))
-								if ui.button(fmt.tprintf("person%d", p.id), label, o = {width = ui.fill(), left = true, quiet = true, intent = app.selected_person == int(p.id) ? .Primary : .Neutral}).clicked {
-									app.selected_person = int(p.id)
+				switch app.side {
+				case 0:
+					// the chosen place, and the person chosen there
+					if ui.card("The chosen place", lucide.MAP_PIN) {
+						if app.selected_cell < 0 {
+							ui.label("Click a cell of the map.")
+						} else {
+							cell := app.selected_cell
+							x, y := cell % s.width, cell / s.width
+							people := s.people[cell]
+							hunger := people > 0 ? f64(s.hunger[cell]) / f64(people) : 0
+							fact("Name", city_name(x, y, s.biome[cell]))
+							fact("Ground", biome_name(s.biome[cell]))
+							fact("At", fmt.tprintf("%d, %d", x, y))
+							fact("People", fmt.tprintf("%d", people))
+							fact("Hunger", fmt.tprintf("%.1f", hunger))
+							fact("Price", fmt.tprintf("%d", market_price(s, cell)))
+							if s.probe_n > 0 {
+								ui.spacer(ui.px(em * 0.4))
+								ui.hline(ui.fill())
+								ui.next({width = ui.fill(), height = ui.px(em * 1.6)})
+								ui.label("  The people here")
+								count := min(s.probe_n, 8)
+								for i in 0 ..< count {
+									p := s.probe[i]
+									label := fmt.tprintf("#%d  %s  hunger %.0f", p.id, compact(f64(p.money)), f64(p.hunger))
+									if ui.button(fmt.tprintf("person%d", p.id), label, o = {width = ui.fill(), left = true, quiet = true, intent = app.selected_person == int(p.id) ? .Primary : .Neutral}).clicked {
+										app.selected_person = int(p.id)
+									}
 								}
 							}
 						}
 					}
-				}
-
-				if app.selected_person >= 0 {
-					// the state of the person chosen among the place's people
 					for i in 0 ..< s.probe_n {
 						p := s.probe[i]
 						if int(p.id) != app.selected_person { continue }
@@ -792,18 +865,101 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 							fact("Skill", fmt.tprintf("%d", p.skill))
 						}
 					}
-				}
 
-				ui.spacer(ui.px(em * 0.8))
-				if ui.card("Over time", lucide.CHART_LINE) {
-					chart_head(em, "Goods in the world", compact(total_goods(s)))
-					chart(s.series_goods[:], s.series_n, s.series_next, draw.hex(0xF5B94AFF), em, "goods")
-					chart_head(em, "Hunger", fmt.tprintf("%.1f", s.mean_hunger))
-					chart(s.series_hunger[:], s.series_n, s.series_next, draw.hex(0xF0715FFF), em, "hunger")
-					chart_head(em, "Gini of money", fmt.tprintf("%.3f", s.gini))
-					chart(s.series_gini[:], s.series_n, s.series_next, draw.hex(0x4FD1C5FF), em, "gini")
+				case 1:
+					// the figures of the world, then its biggest places
+					if ui.card("The world", lucide.ACTIVITY) {
+						ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
+						ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
+						if ui.row() {
+							ui.next({width = ui.fill(), height = ui.fill()})
+							if ui.column() { tile("People", compact(f64(s.agents)), "of the world") }
+							ui.next({width = ui.fill(), height = ui.fill()})
+							if ui.column() { tile("Hunger", fmt.tprintf("%.1f", s.mean_hunger), "of a hundred") }
+						}
+						ui.next({width = ui.fill(), height = ui.px(em * 5.4)})
+						if ui.row() {
+							ui.next({width = ui.fill(), height = ui.fill()})
+							if ui.column() { tile("Starving", fmt.tprintf("%.1f%%", s.starving), "above 70") }
+							ui.next({width = ui.fill(), height = ui.fill()})
+							if ui.column() { tile("Gini", fmt.tprintf("%.3f", s.gini), "of money") }
+						}
+						ui.next({width = ui.fill(), height = ui.px(em * 0.3)})
+						ui.hline(ui.fill())
+						fact("Trades in the last step", fmt.tprintf("%d", s.trades))
+						fact("Goods in the world", compact(total_goods(s)))
+						fact("Money per person", compact(mean_money(s)))
+						fact("Health", fmt.tprintf("%.1f", s.mean_health))
+					}
+					ui.spacer(ui.px(em * 0.8))
+					if ui.card("The biggest places", lucide.BUILDING_2) {
+						table_head(em, "place", "people", "hunger", "price")
+						ui.hline(ui.fill())
+						for i in 0 ..< s.cities_n {
+							table_row(em, s.cities[i])
+						}
+					}
+
+				case 2:
+					// what happened: a famine that starts, a place that fills
+					if ui.card("The news", lucide.NEWSPAPER) {
+						if s.events_n == 0 {
+							ui.label("Nothing has happened yet.")
+						}
+						count := min(s.events_n, 10)
+						for i in 0 ..< count {
+							idx := (s.events_next - 1 - i + EVENT_SLOTS * 2) % EVENT_SLOTS
+							e := &s.events[idx]
+							ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+							if ui.row(.Center) {
+								if ui.style({text_align = .Right}) {
+									ui.next({width = ui.px(em * 4.5), height = ui.fill()})
+									ui.label(fmt.tprintf("%d", e.step))
+								}
+								ui.spacer(ui.px(em * 0.6))
+								ui.next({width = ui.fill(), height = ui.fill()})
+								ui.label(event_text(e))
+							}
+						}
+					}
+
+				case 3:
+					if ui.card("Over time", lucide.CHART_LINE) {
+						chart_head(em, "Goods in the world", compact(total_goods(s)))
+						chart(s.series_goods[:], s.series_n, s.series_next, draw.hex(0xF5B94AFF), em, "goods")
+						chart_head(em, "Hunger", fmt.tprintf("%.1f", s.mean_hunger))
+						chart(s.series_hunger[:], s.series_n, s.series_next, draw.hex(0xF0715FFF), em, "hunger")
+						chart_head(em, "Gini of money", fmt.tprintf("%.3f", s.gini))
+						chart(s.series_gini[:], s.series_n, s.series_next, draw.hex(0x4FD1C5FF), em, "gini")
+					}
 				}
 				ui.spacer(ui.px(em * 0.8))
+			}
+		}
+
+		// the foot: what the pointer does, and where it is
+		ui.spacer(ui.px(em * 0.4))
+		ui.next({width = ui.fill(), height = ui.px(em * 2)})
+		foot := ui.build_box({.Draw_Background, .Draw_Border}, "statusbar")
+		if ui.parent(foot) {
+			if ui.row(.Center) {
+				ui.spacer(ui.px(em * 0.9))
+				ui.label("Wheel zooms · drag moves · click a place · Space pauses")
+				ui.spacer(ui.fill())
+				if app.hover_cell >= 0 && app.hover_cell < len(s.people) {
+					ui.label(
+						fmt.tprintf(
+							"%s · %d, %d · %d people",
+							city_name(app.hover_cell % s.width, app.hover_cell / s.width, s.biome[app.hover_cell]),
+							app.hover_cell % s.width,
+							app.hover_cell / s.width,
+							s.people[app.hover_cell],
+						),
+					)
+				} else {
+					ui.label(fmt.tprintf("%d × %d cells", s.width, s.height))
+				}
+				ui.spacer(ui.px(em * 0.9))
 			}
 		}
 	}
@@ -1037,6 +1193,7 @@ viewer_run :: proc(agents, steps_per_second, seed: u64, frames: int, headless: b
 	app := new(App)
 	defer free(app)
 	app.layer = .Land
+	app.side = 1
 	app.zoom = clamp(zoom > 0 ? zoom : 1, 1, 16)
 	app.selected_cell, app.selected_person = -1, -1
 	w := engine.world_make({width = 160, height = 96, agents = int(agents), seed = seed})

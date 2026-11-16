@@ -32,9 +32,15 @@ costs no step.
   (money, goods, hunger, health, skill).
 - **The header**: the mark, the step, the people and the goods; Pause/Play; the rate as a segmented control (×1, ×10,
   ×30, ×120).
+- **The shell**: a top bar with the mark, the step, the people, the goods, the layers, the zoom and the world's clock
+  (Pause/Play, ×1 to ×120); a sidebar with four tabs — *Place*, *World*, *News*, *Charts* — so that each fact has one
+  place; a foot that says what the pointer does and which cell it is over.
+- **The news**: as the world runs, a famine that starts and a place that fills with newcomers are written, with their
+  step, into a ring of 24 lines that the *News* tab reads. The engine thread compares each step's cells with the last.
+- **The legend**: the layer's name and its scale, over the map's lower left.
 - **The panels**: *The world* (people, hunger, starving, Gini as figures; trades, goods, money per person and health as
   lines), *The biggest places* (the six most populated cells, with their biome, people, a hunger bar and their market's
-  price), and *Over time* (three charts, each with its value now). The panels' column scrolls when the window is short.
+  price), and *Over time* (three charts, each with its value now).
 - **The look**: the toolkit's theme and finish (`Midnight`, `.Machined`), its cards, its segmented controls and its Lucide
   icons. No colour of the interface is written in agora: only the data colours of the map, the charts and the biome dots
   are, and they mean the data.
