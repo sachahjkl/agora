@@ -72,9 +72,13 @@ run_check :: proc(args: []string) -> int {
 	for e in problems { fmt.eprintfln("agoratool check: %s", e) }
 	if len(problems) > 0 { return 1 }
 	fmt.printfln("changelog: %d fragments, well formed", fragments)
-	if why := toolbox.third_party_notices(p, toolbox.NOTICES_FILE, check_only = true); why != "" {
-		fmt.eprintfln("agoratool check: %s", why)
-		return 1
+	// (the notices are one file for every system, read from the crates a Linux build fetched: Windows' build links the
+	// toolkit's text library without fetching them, so the Linux job alone checks the file)
+	when ODIN_OS != .Windows {
+		if why := toolbox.third_party_notices(p, toolbox.NOTICES_FILE, check_only = true); why != "" {
+			fmt.eprintfln("agoratool check: %s", why)
+			return 1
+		}
 	}
 	return run_build({"release"})
 }
