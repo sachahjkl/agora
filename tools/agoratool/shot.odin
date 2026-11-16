@@ -10,32 +10,66 @@ import "core:strings"
 import "core:time"
 import toolbox "gt:toolbox"
 
-SHOT_FILE :: "docs/screenshots/viewer.png"
-SHOT_PORT :: "9333"
+// A picture of the documentation: its file in docs/screenshots, and what the window shows when it opens.
+Shot_View :: struct {
+	name: string,
+	args: []string,
+}
 
+SHOT_PLACE :: "--select:32,82"
+SHOT_WARM  :: "--warm:300"
+
+SHOT_VIEWS := [?]Shot_View {
+	{"viewer", {"--side:1"}},
+	{"place", {"--zoom:7", SHOT_PLACE, "--person", "--side:0"}},
+	{"town", {"--zoom:13", SHOT_PLACE, "--person", "--side:0"}},
+	{"dialog", {"--dialog", "--side:1"}},
+	{"hunger", {"--zoom:2.5", SHOT_PLACE, "--layer:2", "--side:3"}},
+	{"people", {"--zoom:4", SHOT_PLACE, "--layer:1", "--side:2"}},
+	{"wealth", {"--layer:3", "--side:1"}},
+	{"close", {"--zoom:24", SHOT_PLACE, "--person", "--side:0"}},
+}
+
+// `shot`: every picture of the documentation. `shot <name>...`: those only.
 run_shot :: proc(args: []string) -> int {
-	out := len(args) > 0 ? args[0] : SHOT_FILE
 	if run_build({}) != 0 { return 1 }
 	_ = os.make_directory_all("docs/screenshots")
 	toolbox.guard_groups()
-	env := toolbox.env_with(nil, fmt.tprintf("TOOLKIT_DEVTOOLS=%s", SHOT_PORT))
+	for view, i in SHOT_VIEWS {
+		wanted := len(args) == 0
+		for a in args { if a == view.name { wanted = true } }
+		if !wanted { continue }
+		// (a port a view: the endpoint of the view before cannot answer for this one)
+		if shot_view(view, fmt.tprintf("%d", 9333 + i)) != 0 { return 1 }
+	}
+	return 0
+}
+
+shot_view :: proc(view: Shot_View, port: string) -> int {
+	out := fmt.tprintf("docs/screenshots/%s.png", view.name)
+	env := toolbox.env_with(nil, fmt.tprintf("TOOLKIT_DEVTOOLS=%s", port))
 	if driver := vulkan_driver(); driver != "" {
 		more := make([]string, len(env) + 1, context.temp_allocator)
 		copy(more, env)
 		more[len(env)] = fmt.tprintf("VK_DRIVER_FILES=%s", driver)
 		env = more
 	}
-	process, err := toolbox.start_group({"build/agora", "--headless", "--agents:400000", "--rate:240", "--zoom:5", "--select:32,82"}, env, nil)
+	command := make([dynamic]string, context.temp_allocator)
+	// (the world lives SHOT_WARM steps before its window opens: the charts, the news and the layers have something to
+	// show, and the endpoint answers only then)
+	append(&command, PROGRAM, "--headless", "--agents:200000", "--rate:30", SHOT_WARM)
+	append(&command, ..view.args)
+	process, err := toolbox.start_group(command[:], env, nil)
 	if err != nil {
 		fmt.eprintfln("agoratool shot: the viewer does not start")
 		return 1
 	}
 	defer toolbox.stop_group(process)
 	// the endpoint answers when the window is there: ask, with a bound
-	endpoint := fmt.tprintf("http://127.0.0.1:%s/json", SHOT_PORT)
+	endpoint := fmt.tprintf("http://127.0.0.1:%s/json", port)
 	ready := false
 	deadline := time.tick_now()
-	for time.tick_since(deadline) < 20 * time.Second {
+	for time.tick_since(deadline) < 120 * time.Second {
 		code, _ := toolbox.capture({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", endpoint})
 		if strings.trim_space(code) == "200" {
 			ready = true
@@ -47,18 +81,16 @@ run_shot :: proc(args: []string) -> int {
 		fmt.eprintln("agoratool shot: the DevTools endpoint did not answer")
 		return 1
 	}
-	// a moment of world before the picture: the charts have something to show
-	time.sleep(2500 * time.Millisecond)
 	if !toolbox.run(
-		{"odin", "run", "ext/gui_toolkit/tools/tk", "-out:build/tk", "--", "cdp", "--port", SHOT_PORT, "wheel", "1150", "520", "6", ",", "idle", ",", "shot", out},
+		{"odin", "run", "ext/gui_toolkit/tools/tk", "-out:build/tk", "--", "cdp", "--port", port, "idle", ",", "shot", out},
 		{echo = true},
 	) {
 		fmt.eprintln("agoratool shot: the picture could not be taken")
 		return 1
 	}
 	fmt.printfln("wrote %s", out)
-	// the site shows the same picture: its folder holds its own copies
-	site_copy := "site/img/viewer.png"
+	// the site shows the same pictures: its folder holds its own copies
+	site_copy := fmt.tprintf("site/img/%s.png", view.name)
 	if data, read_err := os.read_entire_file(out, context.temp_allocator); read_err == nil {
 		_ = os.make_directory_all("site/img")
 		if os.write_entire_file(site_copy, data) == nil { fmt.printfln("wrote %s", site_copy) }

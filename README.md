@@ -16,9 +16,12 @@ and never touches the world.
 
 ![agora's window: the map of the land, the counters and the charts](docs/screenshots/viewer.png)
 
+![A town seen close: its streets, its houses and its people](docs/screenshots/close.png)
+
 - **The window**: the world runs beside it in a thread, at 1 to 120 steps a second; the map shows the land (or the
-  people, the hunger, the wealth of a cell), and the counters and three charts say what the sensors see. The world is
-  never read by the window, and a frame costs no step.
+  people, the hunger, the wealth of a cell) from the whole world down to the streets of a town; a sidebar says who lives
+  in a place, what the world's figures are, its news and its charts; a dialog founds another world from a seed. The
+  world is never read by the window, and a frame costs no step.
 - **A deterministic world**: a seed founds the people, and the same seed gives the same run, byte for byte. Randomness is
   a pure function of (seed, step, agent, use), with no shared state.
 - **People in columns**: cell, goods, money, hunger, health, skill, in structure-of-arrays; the step visits them five

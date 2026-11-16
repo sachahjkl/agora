@@ -29,6 +29,11 @@ Options :: struct {
 	headless:   bool,
 	select:     string,
 	zoom:       f32,
+	layer:      int,  // the map's layer at the start: 0 land, 1 people, 2 hunger, 3 wealth
+	side:       int,  // the sidebar's tab at the start: 0 place, 1 world, 2 news, 3 charts
+	person:     bool, // the first person of the place chosen by --select is chosen too
+	warm:       int,  // steps the world lives before the window opens
+	dialog:     bool, // the dialog that founds another world is open from the start
 	quiet:      bool,
 }
 
@@ -42,6 +47,7 @@ DEFAULT_OPTIONS :: Options {
 	gini_every = 10,
 	rate       = 30,
 	frames     = -1,
+	side       = 1,
 }
 
 usage :: proc() {
@@ -58,6 +64,12 @@ usage :: proc() {
 	fmt.println("  --gini-every:N  the exact Gini every N steps; 0: never, the cheapest (10)")
 	fmt.println("  --frames:N      N frames of a hidden window, then exit")
 	fmt.println("  --headless      no window of the system (the picture through the DevTools endpoint)")
+	fmt.println("  --select:X,Y    the window: a place chosen from the start; --person: its first person too")
+	fmt.println("  --zoom:N        the window: the map's zoom at the start (1)")
+	fmt.println("  --layer:N       the window: the map's layer (0 land, 1 people, 2 hunger, 3 wealth)")
+	fmt.println("  --side:N        the window: the sidebar's tab (0 place, 1 world, 2 news, 3 charts)")
+	fmt.println("  --dialog        the window: the dialog that founds another world is open from the start")
+	fmt.println("  --warm:N        the window: steps the world lives before the window opens (0)")
 	fmt.println("  --quiet         headless: the last line only")
 }
 
@@ -86,7 +98,7 @@ main :: proc() {
 	if command == "run" {
 		os.exit(run_headless(&o))
 	}
-	os.exit(viewer_run(u64(o.agents), u64(o.rate), o.seed, o.frames, o.headless, o.select, o.zoom))
+	os.exit(viewer_run(&o))
 }
 
 has_prefix :: proc(s, p: string) -> bool {
@@ -105,6 +117,16 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 		}
 		if arg == "--headless" {
 			o.headless = true
+			i += 1
+			continue
+		}
+		if arg == "--dialog" {
+			o.dialog = true
+			i += 1
+			continue
+		}
+		if arg == "--person" {
+			o.person = true
 			i += 1
 			continue
 		}
@@ -145,6 +167,12 @@ parse :: proc(args: []string, o: ^Options) -> bool {
 			o.select = value
 		case "zoom":
 			o.zoom, ok = strconv.parse_f32(value)
+		case "layer":
+			o.layer, ok = strconv.parse_int(value)
+		case "side":
+			o.side, ok = strconv.parse_int(value)
+		case "warm":
+			o.warm, ok = strconv.parse_int(value)
 		case:
 			fmt.eprintfln("agora: unknown option %s", name)
 			return false
