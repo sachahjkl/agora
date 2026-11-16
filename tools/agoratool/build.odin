@@ -61,6 +61,10 @@ run_check :: proc(args: []string) -> int {
 		if !toolbox.check_windows(p) { return 1 }
 	}
 	if !toolbox.run(toolbox.odin_command(p, "check", "tools/agoratool"), {echo = true}) { return 1 }
+	when ODIN_OS != .Windows {
+		// (this tool for Windows too: the release's Windows job builds it)
+		if !toolbox.run({"odin", "check", "tools/agoratool", fmt.tprintf("-collection:gt=%s/src", toolbox.toolkit_dir(p)), "-vet", "-target:windows_amd64"}, {echo = true}) { return 1 }
+	}
 	if run_test(nil) != 0 { return 1 }
 	// (the changelog's fragments and ROADMAP.md: the toolkit reads both)
 	pp := p
