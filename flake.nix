@@ -2,7 +2,12 @@
   description = "agora: a living world of autonomous people, watched as it runs";
 
   inputs = {
-    self.submodules = true;
+    # The toolkit, at the submodule's commit: a flake fetched from GitHub is a tarball without submodules
+    # (gui_toolkit docs/toolbox.md, "The flake's toolkit").
+    gui_toolkit = {
+      url = "github:sachahjkl/gui_toolkit/a6e90eeb405a2309ab0bd44b44bb7d6b0f44e139";
+      flake = false;
+    };
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2605";
     git-hooks = {
       url = "https://flakehub.com/f/cachix/git-hooks.nix/0.1";
@@ -13,6 +18,7 @@
   outputs = {
     nixpkgs,
     git-hooks,
+    gui_toolkit,
     ...
   }: let
     system = "x86_64-linux";
@@ -77,11 +83,17 @@
           ./result
           ./.direnv
           ./.odin-cache
-          ./ext/gui_toolkit/build
+          ./ext/gui_toolkit
         ]));
       };
+      # (the toolkit from its input, where the submodule goes; writable: its build writes the native library there)
+      postUnpack = ''
+        mkdir -p $sourceRoot/ext
+        cp -r ${gui_toolkit} $sourceRoot/ext/gui_toolkit
+        chmod -R u+w $sourceRoot/ext/gui_toolkit
+      '';
       # the crates of the toolkit's text library, vendored: cargo makes no request
-      cargoDeps = pkgs.rustPlatform.importCargoLock {lockFile = ./ext/gui_toolkit/native/text/Cargo.lock;};
+      cargoDeps = pkgs.rustPlatform.importCargoLock {lockFile = "${gui_toolkit}/native/text/Cargo.lock";};
 
       nativeBuildInputs = [odin pkgs.cargo pkgs.rustc pkgs.clang pkgs.lld pkgs.autoPatchelfHook];
       buildInputs = [pkgs.fontconfig pkgs.freetype pkgs.stdenv.cc.cc.lib];
